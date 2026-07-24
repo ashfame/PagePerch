@@ -13,14 +13,14 @@
 
 ## PP-001 — Scaffold Deterministic MV3 Extension
 
-- Status: not started
+- Status: completed
 - Priority: P0
 - Dependencies: PP-000
 - Spec or plan references: Architecture and Tooling; plan Commit 2
 - Acceptance criteria: Node/npm/Vite/React/strict-TypeScript project builds deterministic side panel, options, and module service-worker entries; manifest permissions and host access are exact; action opens global side panel; supplied logo yields padded 16/32/48/128 icons; baseline accessible automatic-theme surfaces exist; format, lint, typecheck, unit, build, CSP audit, and CI gates pass.
 - Suggested files: package/tool configs, `src/`, `scripts/`, `public/manifest.json`, `.github/workflows/ci.yml`
 - Test expectations: Unit smoke tests, manifest assertions, production build, CSP/package audit
-- Notes: Use `@automattic/isolated-block-editor@2.30.0`; no BYOS client ID is required for CI.
+- Notes: Accepted after independent corrective review and clean main-thread verification. The actual editor and CSS production probe is included in `npm run check`; one native toolbar-host browser case remains an explicit capability skip.
 
 ## PP-002 — Implement Canonical Page Identity
 

@@ -1,0 +1,12 @@
+AGENTS.md
+byos_integrations.md
+docs/
+plan.md
+coverage/
+dist/
+node_modules/
+playwright-report/
+test-results/
+page_perch_logo.png
+public/**/*.png
+package-lock.json

@@ -39,3 +39,19 @@
 - Options considered: Adopt a compatible license now; replace the editor; keep distribution private and defer.
 - Consequences: Development and private testing may proceed, but release documentation must state the distribution blocker.
 - Follow-up tasks: Complete a formal dependency/license review before Chrome Web Store submission.
+
+## 2026-07-25 — Preserve the Pinned Editor with Audited MV3 Compatibility
+
+- Decision: Keep `@automattic/isolated-block-editor@2.30.0`, override `@wordpress/core-data@7.24.0` to its matching `@wordpress/sync@1.24.0`, and apply a Vite transform only to Lodash’s exact `Function('return this')()` global fallback, replacing it with Chrome 114’s `globalThis`.
+- Context: A genuine production probe exposed an incompatible caret-resolved WordPress sync generation and MV3-forbidden dynamic-function fallbacks. Media-worker code from newer mismatched WordPress generations also violated the extension CSP.
+- Options considered: Skip editor bundling until later; downgrade the mandated editor; allow unsafe evaluation; align the pinned dependency generation and narrowly transform the equivalent global-object fallback.
+- Consequences: Both the standalone editor probe and future production application use the same compatibility transform and strict package audit. Dependency refreshes fail the normal gate if forbidden constructs or incompatible exports return.
+- Follow-up tasks: Exercise the actual restricted editor in PP-004, retain the real bundle smoke, and reassess the transform and override whenever the editor pin changes.
+
+## 2026-07-25 — Accept Documented Pinned-Editor Dependency Risk for Private Development
+
+- Decision: Continue private implementation with the locked editor graph while treating 58 moderate production advisories, the stale React peer range, and the unresolved GPL compatibility decision as release risks; do not apply npm’s incompatible forced downgrade.
+- Context: The advisories propagate from three underlying Babel runtime RegExp-complexity, Showdown link-parsing ReDoS, and UUID buffer-handling issues. No non-breaking root remediation is available for the mandated editor version, and the audited bundle contains no remote code or forbidden evaluation.
+- Options considered: Abandon the required editor; force npm’s proposed downgrade; ignore the findings; lock, audit, document, and reassess before distribution.
+- Consequences: Local/private product work can continue with deterministic artifacts, but release readiness cannot claim a clean dependency audit and public distribution remains blocked.
+- Follow-up tasks: Reassess available editor/package updates during PP-010, test user-controlled content paths affected by Showdown, and document the final dependency review in release materials.

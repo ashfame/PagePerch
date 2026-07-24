@@ -2,13 +2,13 @@
 
 ## M0 — Foundation
 
-Status: in progress.
+Status: completed.
 
 Deliver the committed source inputs, durable orchestration state, reproducible Node/npm project, deterministic MV3 build, generated icons, baseline side-panel/options/service-worker surfaces, CI, and initial CSP/package auditing.
 
 ## M1 — Offline Notes
 
-Status: not started.
+Status: in progress.
 
 Deliver canonical page identity, built-in and custom exclusion matching, versioned Chrome local repositories, local-first note service, per-page Gutenberg editor, autosave state, unsupported-page handling, exact-origin root index, navigation handling, editor modes, automatic theme behavior, and accessibility coverage.
 
