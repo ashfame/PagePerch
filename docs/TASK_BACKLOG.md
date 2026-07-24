@@ -1,0 +1,122 @@
+# Task Backlog
+
+## PP-000 — Bootstrap Durable Project State
+
+- Status: completed
+- Priority: P0
+- Dependencies: source-input commit
+- Spec or plan references: Documentation and Atomic Delivery; master-orchestrator bootstrap workflow
+- Acceptance criteria: Project conventions, architecture, roadmap, backlog, compliance, test, security, portability, migration, API, performance, observability, and deployment state are useful and committed; toolchain assumptions are validated.
+- Suggested files: `AGENTS.md`, `docs/*.md`
+- Test expectations: `git diff --check`; direct review against `plan.md` and `byos_integrations.md`
+- Notes: Main-orchestrator-owned task completed before application implementation.
+
+## PP-001 — Scaffold Deterministic MV3 Extension
+
+- Status: not started
+- Priority: P0
+- Dependencies: PP-000
+- Spec or plan references: Architecture and Tooling; plan Commit 2
+- Acceptance criteria: Node/npm/Vite/React/strict-TypeScript project builds deterministic side panel, options, and module service-worker entries; manifest permissions and host access are exact; action opens global side panel; supplied logo yields padded 16/32/48/128 icons; baseline accessible automatic-theme surfaces exist; format, lint, typecheck, unit, build, CSP audit, and CI gates pass.
+- Suggested files: package/tool configs, `src/`, `scripts/`, `public/manifest.json`, `.github/workflows/ci.yml`
+- Test expectations: Unit smoke tests, manifest assertions, production build, CSP/package audit
+- Notes: Use `@automattic/isolated-block-editor@2.30.0`; no BYOS client ID is required for CI.
+
+## PP-002 — Implement Canonical Page Identity
+
+- Status: not started
+- Priority: P0
+- Dependencies: PP-001
+- Spec or plan references: Canonical page identity; internal `PageIdentityService`
+- Acceptance criteria: Supported schemes, exact-origin semantics, fragment removal, trailing slash preservation, deterministic duplicate query sorting, global and custom exclusions, root detection, SHA-256/base64url keys, and unsupported URLs match the plan.
+- Suggested files: `src/domain/`, `src/services/page-identity*`
+- Test expectations: Exhaustive table-driven canonicalization and hashing unit tests
+- Notes: Include the requested product-rationale comment beside canonicalization.
+
+## PP-003 — Implement Versioned Local Storage and Note Service
+
+- Status: not started
+- Priority: P0
+- Dependencies: PP-002
+- Spec or plan references: Internal interfaces; Data model; local storage acceptance
+- Acceptance criteria: Versioned records and settings, storage-neutral repositories, Chrome local adapters, local-first note saves, normalized content hashes, unchanged-save skips, logical deletion, origin indexes, and large records work under mocked Chrome storage.
+- Suggested files: `src/domain/`, `src/repositories/`, `src/services/note*`, `test/`
+- Test expectations: Repository and service tests for upgrades, CRUD, indexing, unchanged content, tombstones, and large content
+- Notes: Keep timestamps and revision generation injectable for deterministic tests.
+
+## PP-004 — Add Per-Page Editor and Origin Index
+
+- Status: not started
+- Priority: P0
+- Dependencies: PP-003
+- Spec or plan references: Side panel; editor modes; theme and accessibility requirements
+- Acceptance criteria: Active-tab changes remount documents after flushing; cached notes load; Gutenberg is locally bundled with remote APIs and disallowed capabilities disabled; autosave uses 750 ms debounce and explicit states; clearing behavior is correct; roots display a recent exact-origin index; themes, focus, reduced motion, narrow layouts, and link behavior meet the plan.
+- Suggested files: `src/side-panel/`, editor adapter, navigation bridge, component tests
+- Test expectations: React Testing Library coverage of unsupported/loading/error/editor/index/autosave/theme/mode flows
+- Notes: Production build must continue to pass CSP audit after editor integration.
+
+## PP-005 — Add Identity Settings and Migrations
+
+- Status: not started
+- Priority: P0
+- Dependencies: PP-003, PP-004
+- Spec or plan references: Settings page; canonical identity migration requirements
+- Acceptance criteria: Exact-origin/name validation and duplicate prevention work; adding exclusions recalculates identities, merges collisions in deterministic Gutenberg documents, and tombstones former keys; removal moves combined notes without attempted splitting; repeated migration is idempotent.
+- Suggested files: `src/options/`, `src/services/identity-migration*`, repositories, tests
+- Test expectations: Settings component tests and migration unit/integration tests
+- Notes: Preserve former source URLs in merge headings and representative URLs for removal.
+
+## PP-006 — Implement BYOS OAuth and Credential Lifecycle
+
+- Status: not started
+- Priority: P0
+- Dependencies: PP-001, PP-003
+- Spec or plan references: `byos_integrations.md`; BYOS integration; Settings page
+- Acceptance criteria: PKCE values use secure randomness; session state survives worker suspension; callback state and errors are validated; public-client token exchange is exact; token expiry is skewed early; S3 credentials and secret exist only in memory; missing build config and reconnect-required states are actionable; disconnect clears only local connection material.
+- Suggested files: `src/byos/`, settings repository, options controls, tests
+- Test expectations: Deterministic crypto/network mocks covering success, state mismatch, callback/token errors, expiry, missing config, and disconnect
+- Notes: Never request identity scopes or store the S3 secret.
+
+## PP-007 — Implement S3 Replica and Sync Engine
+
+- Status: not started
+- Priority: P0
+- Dependencies: PP-003, PP-006
+- Spec or plan references: Internal interfaces; Data model reconciliation; BYOS integration
+- Acceptance criteria: AWS SDK v3 uses injected endpoint/region/bucket/credentials, SigV4, and path style; records map to deterministic keys; reconcile chooses newest timestamp then revision ID; tombstones overwrite; queue coalesces by key and survives restart; retry backoff is bounded; all required sync triggers and status reporting work.
+- Suggested files: `src/sync/`, `src/byos/s3*`, service worker, panel/options integration
+- Test expectations: Network-mocked local/remote/retry/expiry/partial-failure/restart/reconnect cases
+- Notes: Local saves remain successful during every remote failure.
+
+## PP-008 — Add Extension Integration and Package Audits
+
+- Status: not started
+- Priority: P1
+- Dependencies: PP-004, PP-005, PP-007
+- Spec or plan references: Test and Acceptance Plan; plan Commit 7
+- Acceptance criteria: Playwright launches an unpacked production build and covers options, worker, toolbar/panel, navigation, persistence, and root index where Chromium supports them; package audit rejects remote scripts, unsafe evaluation, missing resources, source maps, and credentials; CI runs all stable gates under Xvfb.
+- Suggested files: `e2e/`, `scripts/`, Playwright config, CI
+- Test expectations: Passing production audit and browser smoke suite with documented environment prerequisites
+- Notes: Quarantine no acceptance-critical behavior; provide a deterministic diagnostic when side-panel automation is unsupported.
+
+## PP-009 — Complete Product and Release Documentation
+
+- Status: not started
+- Priority: P1
+- Dependencies: PP-008
+- Spec or plan references: Documentation and Atomic Delivery; Assumptions and Deferred Work
+- Acceptance criteria: README covers setup, development, BYOS registration/configuration, storage, identity, permissions, privacy, limitations, dependency license status, testing, packaging, and release checks without claiming public distribution readiness.
+- Suggested files: `README.md`, strategy/state docs
+- Test expectations: Markdown format check, link/path review, command verification
+- Notes: Do not add a project LICENSE.
+
+## PP-010 — Production-Readiness Audit and Hardening
+
+- Status: not started
+- Priority: P0
+- Dependencies: PP-009
+- Spec or plan references: Entire acceptance plan
+- Acceptance criteria: Complete gate passes from clean install; dependency and package risks are reviewed; accessibility and error paths are audited; no hidden TODOs or secrets exist; compliance rows are tested or explicitly deferred; reproducible release artifact and checksum are generated without publishing.
+- Suggested files: Any narrowly justified fixes plus state documentation
+- Test expectations: `npm ci`, complete check, browser smoke, package inspection, clean-worktree verification
+- Notes: Use separate bounded corrective tasks for findings; do not combine unrelated hardening fixes.
