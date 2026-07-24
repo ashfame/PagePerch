@@ -24,14 +24,14 @@
 
 ## PP-002 — Implement Canonical Page Identity
 
-- Status: not started
+- Status: completed
 - Priority: P0
 - Dependencies: PP-001
 - Spec or plan references: Canonical page identity; internal `PageIdentityService`
 - Acceptance criteria: Supported schemes, exact-origin semantics, fragment removal, trailing slash preservation, deterministic duplicate query sorting, global and custom exclusions, root detection, SHA-256/base64url keys, and unsupported URLs match the plan.
 - Suggested files: `src/domain/`, `src/services/page-identity*`
 - Test expectations: Exhaustive table-driven canonicalization and hashing unit tests
-- Notes: Include the requested product-rationale comment beside canonicalization.
+- Notes: Accepted after independent review and 84 focused cases; the requested product-rationale comment is present beside canonicalization.
 
 ## PP-003 — Implement Versioned Local Storage and Note Service
 
