@@ -6,9 +6,12 @@ import {
   type FormEvent,
 } from 'react';
 
+import type { ByosClientConfig } from '../background/byosClient';
 import type { BuiltInPageIdentityExclusions } from '../domain/pageIdentity';
 import type { EditorMode, SettingsRecordV1 } from '../domain/settings';
 import type { SettingsRepository } from '../repositories/settingsRepository';
+import type { ByosCoordinator } from '../services/byosCoordinator';
+import { ByosError } from '../services/byosError';
 import type { IdentityMigrationExecutor } from '../services/identityMigrationExecutor';
 import '../styles/base.css';
 import './App.css';
@@ -21,9 +24,17 @@ import {
 
 type SettingsPort = Pick<SettingsRepository, 'get' | 'updateEditorMode'>;
 type MigrationPort = Pick<IdentityMigrationExecutor, 'start'>;
+type ByosConnectionPort = Pick<ByosCoordinator, 'connect' | 'disconnect'>;
+
+export interface OptionsByosDependencies {
+  readonly clock: () => Date;
+  readonly config: ByosClientConfig;
+  readonly connection: ByosConnectionPort;
+}
 
 export interface OptionsAppDependencies {
   readonly builtInExclusions: BuiltInPageIdentityExclusions;
+  readonly byos: OptionsByosDependencies;
   readonly migration: MigrationPort;
   readonly settings: SettingsPort;
 }
@@ -42,22 +53,135 @@ interface Notice {
   readonly message: string;
 }
 
-type BusyOperation = 'editor' | 'identity';
+type BusyOperation =
+  'byos-connect' | 'byos-disconnect' | 'byos-refresh' | 'editor' | 'identity';
+
+type ByosRetryAction = 'connect' | 'disconnect' | 'refresh';
+
+interface ByosFailure {
+  readonly message: string;
+  readonly retry: ByosRetryAction;
+}
+
+type ByosDisplayState =
+  | { readonly kind: 'connected'; readonly expiresAt: string }
+  | { readonly kind: 'disconnected' }
+  | { readonly kind: 'expired'; readonly expiresAt: string }
+  | { readonly kind: 'unavailable' };
+
+const MAX_TIMEOUT_DELAY_MS = 2_147_483_647;
 
 function isEditorMode(value: string): value is EditorMode {
   return value === 'text-focused-blocks' || value === 'paragraphs-only';
 }
 
 function busyMessage(operation: BusyOperation): string {
-  return operation === 'editor'
-    ? 'Saving editor mode…'
-    : 'Updating page identity…';
+  switch (operation) {
+    case 'byos-connect':
+      return 'Connecting BYOS…';
+    case 'byos-disconnect':
+      return 'Disconnecting BYOS…';
+    case 'byos-refresh':
+      return 'Refreshing BYOS status…';
+    case 'editor':
+      return 'Saving editor mode…';
+    case 'identity':
+      return 'Updating page identity…';
+  }
+}
+
+function isByosConfigured(config: ByosClientConfig): boolean {
+  return (
+    config.enabled &&
+    typeof config.clientId === 'string' &&
+    config.clientId.trim() !== ''
+  );
+}
+
+function byosDisplayState(
+  settings: SettingsRecordV1,
+  byos: OptionsByosDependencies,
+): ByosDisplayState {
+  if (!isByosConfigured(byos.config)) {
+    return { kind: 'unavailable' };
+  }
+
+  const connection = settings.byosConnection;
+
+  if (connection === undefined) {
+    return { kind: 'disconnected' };
+  }
+
+  const expiresAt = new Date(connection.expiresAt);
+  let now: Date;
+
+  try {
+    now = byos.clock();
+  } catch {
+    return { kind: 'expired', expiresAt: connection.expiresAt };
+  }
+
+  if (
+    !(now instanceof Date) ||
+    Number.isNaN(now.valueOf()) ||
+    Number.isNaN(expiresAt.valueOf()) ||
+    expiresAt.valueOf() <= now.valueOf()
+  ) {
+    return { kind: 'expired', expiresAt: connection.expiresAt };
+  }
+
+  return { kind: 'connected', expiresAt: connection.expiresAt };
+}
+
+function formatTimestamp(value: string): string {
+  const timestamp = new Date(value);
+
+  if (Number.isNaN(timestamp.valueOf())) {
+    return 'Unavailable';
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(timestamp);
+}
+
+function byosActionFailure(
+  action: 'connect' | 'disconnect',
+  error: unknown,
+): string {
+  if (action === 'disconnect') {
+    return 'BYOS could not be disconnected safely. Retry disconnect.';
+  }
+
+  if (error instanceof ByosError) {
+    switch (error.code) {
+      case 'configuration-required':
+        return 'BYOS connection is unavailable in this build.';
+      case 'randomness-failed':
+        return 'Secure BYOS authorization could not be started. Retry the connection.';
+      case 'session-failed':
+        return 'BYOS authorization state could not be cleaned up safely. Retry the connection.';
+      case 'state-mismatch':
+        return 'BYOS authorization could not be verified. Retry the connection.';
+      case 'authorization-failed':
+      case 'token-failed':
+      case 'credential-failed':
+      case 'disconnect-failed':
+      case 'reconnect-required':
+        return 'BYOS connection was not completed. Retry the connection.';
+    }
+  }
+
+  return 'BYOS connection was not completed. Retry the connection.';
 }
 
 export function OptionsApp({ dependencies }: OptionsAppProps) {
   const [view, setView] = useState<ViewState>({ status: 'loading' });
   const [busy, setBusy] = useState<BusyOperation>();
   const [notice, setNotice] = useState<Notice>();
+  const [byosFailure, setByosFailure] = useState<ByosFailure>();
+  const [expiryWakeRevision, setExpiryWakeRevision] = useState(0);
   const [originInput, setOriginInput] = useState('');
   const [parameterInput, setParameterInput] = useState('');
   const loadRevision = useRef(0);
@@ -68,6 +192,7 @@ export function OptionsApp({ dependencies }: OptionsAppProps) {
     loadRevision.current = revision;
     setView({ status: 'loading' });
     setNotice(undefined);
+    setByosFailure(undefined);
 
     try {
       const settings = await dependencies.settings.get();
@@ -92,6 +217,46 @@ export function OptionsApp({ dependencies }: OptionsAppProps) {
       loadRevision.current += 1;
     };
   }, [loadSettings]);
+
+  useEffect(() => {
+    if (
+      view.status !== 'ready' ||
+      !isByosConfigured(dependencies.byos.config) ||
+      view.settings.byosConnection === undefined
+    ) {
+      return;
+    }
+
+    const expiresAt = new Date(view.settings.byosConnection.expiresAt);
+    let now: Date;
+
+    try {
+      now = dependencies.byos.clock();
+    } catch {
+      return;
+    }
+
+    if (
+      !(now instanceof Date) ||
+      Number.isNaN(now.valueOf()) ||
+      Number.isNaN(expiresAt.valueOf()) ||
+      expiresAt.valueOf() <= now.valueOf()
+    ) {
+      return;
+    }
+
+    const remaining = expiresAt.valueOf() - now.valueOf();
+    const wakeTimer = window.setTimeout(
+      () => {
+        setExpiryWakeRevision((revision) => revision + 1);
+      },
+      Math.min(remaining, MAX_TIMEOUT_DELAY_MS),
+    );
+
+    return () => {
+      window.clearTimeout(wakeTimer);
+    };
+  }, [dependencies.byos, expiryWakeRevision, view]);
 
   const beginOperation = (operation: BusyOperation): boolean => {
     if (operationInFlight.current) {
@@ -217,7 +382,89 @@ export function OptionsApp({ dependencies }: OptionsAppProps) {
     }
   };
 
+  const performByosAction = async (
+    action: 'connect' | 'disconnect',
+  ): Promise<void> => {
+    if (
+      (action === 'connect' && !isByosConfigured(dependencies.byos.config)) ||
+      !beginOperation(action === 'connect' ? 'byos-connect' : 'byos-disconnect')
+    ) {
+      return;
+    }
+
+    setByosFailure(undefined);
+    let actionFailure: ByosFailure | undefined;
+
+    try {
+      await dependencies.byos.connection[action]();
+    } catch (error) {
+      actionFailure = {
+        message: byosActionFailure(action, error),
+        retry: action,
+      };
+    }
+
+    try {
+      const refreshed = await dependencies.settings.get();
+      setView({ status: 'ready', settings: refreshed });
+
+      if (actionFailure === undefined) {
+        setNotice({
+          kind: 'saved',
+          message:
+            action === 'connect'
+              ? 'BYOS connection saved. Local storage remains on.'
+              : 'BYOS disconnected. Local storage remains on.',
+        });
+      } else {
+        setByosFailure(actionFailure);
+      }
+    } catch {
+      setNotice(undefined);
+      setByosFailure({
+        message:
+          'PagePerch could not refresh the actual BYOS connection state. Retry status refresh.',
+        retry: 'refresh',
+      });
+    } finally {
+      finishOperation();
+    }
+  };
+
+  const refreshByosStatus = async (): Promise<void> => {
+    if (!beginOperation('byos-refresh')) {
+      return;
+    }
+
+    setByosFailure(undefined);
+
+    try {
+      const refreshed = await dependencies.settings.get();
+      setView({ status: 'ready', settings: refreshed });
+      setNotice({
+        kind: 'saved',
+        message: 'BYOS connection status refreshed.',
+      });
+    } catch {
+      setNotice(undefined);
+      setByosFailure({
+        message:
+          'PagePerch could not refresh the actual BYOS connection state. Retry status refresh.',
+        retry: 'refresh',
+      });
+    } finally {
+      finishOperation();
+    }
+  };
+
   const isBusy = busy !== undefined;
+  const isByosStatusUnknown = byosFailure?.retry === 'refresh';
+  const hasStoredByosConnection =
+    view.status === 'ready' && view.settings.byosConnection !== undefined;
+  const storageState =
+    view.status === 'ready'
+      ? byosDisplayState(view.settings, dependencies.byos)
+      : undefined;
 
   return (
     <main
@@ -412,22 +659,174 @@ export function OptionsApp({ dependencies }: OptionsAppProps) {
             <h2 id="storage-heading">Storage &amp; sync</h2>
             <p className="storage-status">
               <strong>
-                {view.settings.byosConnection === undefined
-                  ? 'Local only'
-                  : 'Local + BYOS'}
+                {isByosStatusUnknown
+                  ? 'Local on · BYOS status unknown'
+                  : storageState?.kind === 'connected' ||
+                      storageState?.kind === 'expired'
+                    ? 'Local + BYOS'
+                    : 'Local only'}
               </strong>
             </p>
             <p>Local storage is always on and cannot be disabled.</p>
-            <p>
-              {view.settings.byosConnection === undefined
-                ? 'BYOS connection setup is coming next.'
-                : 'This BYOS connection remains available. Connection management is coming next.'}
-            </p>
-            <button type="button" disabled>
-              {view.settings.byosConnection === undefined
-                ? 'Connect BYOS — coming next'
-                : 'Manage BYOS — coming next'}
-            </button>
+            <p>Connecting BYOS does not turn local storage off.</p>
+
+            {isByosStatusUnknown ? (
+              <div className="byos-connection">
+                <p className="byos-state">
+                  <strong>BYOS status unknown</strong>
+                </p>
+                <p>
+                  Refresh the stored connection state before taking another BYOS
+                  action.
+                </p>
+              </div>
+            ) : storageState?.kind === 'unavailable' ? (
+              <div className="byos-connection">
+                <p className="byos-state">
+                  <strong>Unavailable in this build</strong>
+                </p>
+                <p>
+                  BYOS connection is unavailable because this build has no
+                  public client ID.
+                </p>
+                {hasStoredByosConnection ? (
+                  <p>Stored BYOS connection is inactive in this build.</p>
+                ) : null}
+                <button type="button" disabled>
+                  Connect BYOS
+                </button>
+                {hasStoredByosConnection &&
+                byosFailure?.retry !== 'disconnect' ? (
+                  <button
+                    type="button"
+                    className="secondary-button byos-remove-button"
+                    disabled={isBusy}
+                    onClick={() => void performByosAction('disconnect')}
+                  >
+                    Remove local BYOS connection
+                  </button>
+                ) : null}
+              </div>
+            ) : storageState?.kind === 'disconnected' ? (
+              <div className="byos-connection">
+                <p className="byos-state">
+                  <strong>Not connected</strong>
+                </p>
+                <p>
+                  Authorize PagePerch to use the established BYOS storage
+                  service while local storage stays on.
+                </p>
+                {byosFailure?.retry === 'connect' ? null : (
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    onClick={() => void performByosAction('connect')}
+                  >
+                    Connect BYOS
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="byos-connection">
+                <p className="byos-state">
+                  <strong>
+                    {storageState?.kind === 'connected'
+                      ? 'Connected'
+                      : 'Reconnect required'}
+                  </strong>
+                </p>
+                <dl className="byos-details">
+                  <div>
+                    <dt>Token expires</dt>
+                    <dd>
+                      <time dateTime={storageState?.expiresAt}>
+                        {formatTimestamp(storageState?.expiresAt ?? '')}
+                      </time>
+                    </dd>
+                  </div>
+                  {view.settings.byosConnection?.lastSuccessfulSyncAt ===
+                  undefined ? null : (
+                    <div>
+                      <dt>Last successful sync</dt>
+                      <dd>
+                        <time
+                          dateTime={
+                            view.settings.byosConnection.lastSuccessfulSyncAt
+                          }
+                        >
+                          {formatTimestamp(
+                            view.settings.byosConnection.lastSuccessfulSyncAt,
+                          )}
+                        </time>
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+                <div className="byos-actions">
+                  {storageState?.kind === 'expired' &&
+                  byosFailure?.retry !== 'connect' ? (
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => void performByosAction('connect')}
+                    >
+                      Reconnect BYOS
+                    </button>
+                  ) : null}
+                  {byosFailure?.retry === 'disconnect' ? null : (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={isBusy}
+                      onClick={() => void performByosAction('disconnect')}
+                    >
+                      Disconnect BYOS
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {byosFailure === undefined ? null : (
+              <div className="byos-failure">
+                <p className="session-alert" role="alert">
+                  {byosFailure.message}
+                </p>
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => {
+                    if (byosFailure.retry === 'refresh') {
+                      void refreshByosStatus();
+                    } else {
+                      void performByosAction(byosFailure.retry);
+                    }
+                  }}
+                >
+                  {byosFailure.retry === 'connect'
+                    ? 'Retry BYOS connection'
+                    : byosFailure.retry === 'disconnect'
+                      ? 'Retry disconnect'
+                      : 'Retry status refresh'}
+                </button>
+              </div>
+            )}
+
+            <div className="sync-boundary">
+              <dl className="byos-details">
+                <div>
+                  <dt>Pending changes</dt>
+                  <dd>Unavailable — the sync engine is not yet configured.</dd>
+                </div>
+              </dl>
+              <p>
+                Sync now will become available when the PagePerch sync engine is
+                configured.
+              </p>
+              <button type="button" disabled>
+                Sync now
+              </button>
+            </div>
           </section>
 
           <div className="options-notice" aria-live="polite">

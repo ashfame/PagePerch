@@ -169,6 +169,68 @@ button.secondary-button:hover {
   font-size: 1rem;
 }
 
+.byos-connection,
+.sync-boundary {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.byos-state {
+  color: var(--text) !important;
+  font-size: 0.9rem;
+}
+
+.byos-details {
+  display: grid;
+  gap: 0.7rem;
+  margin: 1rem 0;
+}
+
+.byos-details > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.byos-details dt {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.byos-details dd {
+  margin: 0;
+  color: var(--text);
+}
+
+.byos-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.byos-remove-button {
+  margin-top: 0.65rem;
+}
+
+.byos-failure {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.byos-failure > * {
+  margin: 0 !important;
+}
+
+.byos-failure button {
+  justify-self: start;
+}
+
+.sync-boundary p {
+  font-size: 0.85rem;
+}
+
 .options-notice {
   min-height: 3.25rem;
 }
@@ -185,6 +247,8 @@ button.secondary-button:hover {
 
   .custom-rule li button,
   .custom-rule-form button,
+  .byos-actions button,
+  .byos-failure button,
   .options-state button {
     width: 100%;
   }

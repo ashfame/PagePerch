@@ -1,5 +1,12 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { StrictMode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { EditorMode, SettingsRecordV1 } from '../domain/settings';
@@ -8,6 +15,7 @@ import {
   SETTINGS_STORAGE_KEY,
 } from '../repositories/chromeLocalSettingsRepository';
 import { enqueueStorageOperation } from '../repositories/chromeStorage';
+import { ByosError } from '../services/byosError';
 import { IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY } from '../services/identityMigrationPersistence';
 import { InMemoryChromeStorage } from '../../test/inMemoryChromeStorage';
 import { OptionsApp, type OptionsAppDependencies } from './App';
@@ -16,6 +24,16 @@ const builtInExclusions = {
   exactParameterNames: ['gclid', 'fbclid'],
   parameterNamePrefixes: ['utm_'],
 } as const;
+
+const NOW = '2026-07-25T12:00:00.000Z';
+
+function connection() {
+  return {
+    accessToken: 'oauth-access-token',
+    connectedAt: NOW,
+    expiresAt: '2026-07-25T13:00:00.000Z',
+  };
+}
 
 function settings(overrides: Partial<SettingsRecordV1> = {}): SettingsRecordV1 {
   return {
@@ -33,6 +51,8 @@ function cloneSettings(value: SettingsRecordV1): SettingsRecordV1 {
 interface Harness {
   current(): SettingsRecordV1;
   readonly dependencies: OptionsAppDependencies;
+  readonly connect: ReturnType<typeof vi.fn<() => Promise<void>>>;
+  readonly disconnect: ReturnType<typeof vi.fn<() => Promise<void>>>;
   readonly get: ReturnType<typeof vi.fn<() => Promise<SettingsRecordV1>>>;
   readonly updateEditorMode: ReturnType<
     typeof vi.fn<(editorMode: EditorMode) => Promise<SettingsRecordV1>>
@@ -44,9 +64,18 @@ interface Harness {
       ) => Promise<{ readonly operationId: string; readonly status: 'applied' }>
     >
   >;
+  readonly clock: ReturnType<typeof vi.fn<() => Date>>;
 }
 
-function harness(initial: SettingsRecordV1 = settings()): Harness {
+interface HarnessOptions {
+  readonly clientId?: string;
+  readonly enabled?: boolean;
+}
+
+function harness(
+  initial: SettingsRecordV1 = settings(),
+  options: HarnessOptions = {},
+): Harness {
   let stored = cloneSettings(initial);
   const get = vi.fn(() => Promise.resolve(cloneSettings(stored)));
   const updateEditorMode = vi.fn((editorMode: EditorMode) => {
@@ -60,14 +89,39 @@ function harness(initial: SettingsRecordV1 = settings()): Harness {
       operationId: 'options-operation',
     });
   });
+  const connect = vi.fn(() => {
+    stored = { ...stored, byosConnection: connection() };
+    return Promise.resolve();
+  });
+  const disconnect = vi.fn(() => {
+    stored = {
+      schemaVersion: stored.schemaVersion,
+      editorMode: stored.editorMode,
+      pageIdentityExclusions: stored.pageIdentityExclusions,
+    };
+    return Promise.resolve();
+  });
+  const clock = vi.fn(() => new Date(NOW));
+  const clientId = options.clientId ?? 'client-public';
 
   return {
+    clock,
+    connect,
     current: () => cloneSettings(stored),
     dependencies: {
       builtInExclusions,
+      byos: {
+        clock,
+        config: {
+          clientId,
+          enabled: options.enabled ?? true,
+        },
+        connection: { connect, disconnect },
+      },
       migration: { start },
       settings: { get, updateEditorMode },
     },
+    disconnect,
     get,
     updateEditorMode,
     start,
@@ -224,6 +278,14 @@ describe('OptionsApp', () => {
       <OptionsApp
         dependencies={{
           builtInExclusions,
+          byos: {
+            clock: () => new Date(NOW),
+            config: { clientId: 'client-public', enabled: true },
+            connection: {
+              connect: vi.fn(() => Promise.resolve()),
+              disconnect: vi.fn(() => Promise.resolve()),
+            },
+          },
           migration: { start },
           settings: repository,
         }}
@@ -264,7 +326,7 @@ describe('OptionsApp', () => {
     expect(start).not.toHaveBeenCalled();
   });
 
-  it('shows built-in exclusions, accessible rule fields, and Local-only storage boundaries', async () => {
+  it('shows built-in exclusions, accessible rule fields, and configured Local-only storage boundaries', async () => {
     const testHarness = harness();
     await renderReady(testHarness);
 
@@ -280,30 +342,411 @@ describe('OptionsApp', () => {
     expect(
       screen.getByText('Local storage is always on and cannot be disabled.'),
     ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Connect BYOS' })).toBeEnabled();
+    expect(screen.getByText('Pending changes')).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Connect BYOS — coming next' }),
-    ).toBeDisabled();
+      screen.getByText('Unavailable — the sync engine is not yet configured.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sync now' })).toBeDisabled();
   });
 
-  it('shows Local + BYOS without inventing connection management actions', async () => {
+  it('disables connection with exact missing-client guidance and no client calls', async () => {
+    const testHarness = harness(settings(), { clientId: '   ' });
+    await renderReady(testHarness);
+
+    expect(screen.getByText('Local only')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'BYOS connection is unavailable because this build has no public client ID.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Connect BYOS' })).toBeDisabled();
+    expect(testHarness.connect).not.toHaveBeenCalled();
+    expect(testHarness.disconnect).not.toHaveBeenCalled();
+    expect(testHarness.clock).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText('Stored BYOS connection is inactive in this build.'),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', {
+        name: 'Remove local BYOS connection',
+      }),
+    ).toBeNull();
+  });
+
+  it('discloses and manually removes an inactive stored connection without enabling authorization', async () => {
+    const user = userEvent.setup();
+    const currentConnection = connection();
+    const testHarness = harness(
+      settings({ byosConnection: currentConnection }),
+      { clientId: '   ' },
+    );
+    testHarness.disconnect.mockRejectedValueOnce(
+      new ByosError('disconnect-failed', 'sentinel-stored-token'),
+    );
+    await renderReady(testHarness);
+
+    expect(
+      screen.getByText('Stored BYOS connection is inactive in this build.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(currentConnection.accessToken)).toBeNull();
+    expect(testHarness.connect).not.toHaveBeenCalled();
+    expect(testHarness.disconnect).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Remove local BYOS connection',
+      }),
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'BYOS could not be disconnected safely. Retry disconnect.',
+    );
+    expect(screen.getByRole('alert')).not.toHaveTextContent('sentinel');
+    expect(testHarness.get).toHaveBeenCalledTimes(2);
+
+    await user.click(screen.getByRole('button', { name: 'Retry disconnect' }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText('Stored BYOS connection is inactive in this build.'),
+      ).toBeNull();
+    });
+    expect(testHarness.disconnect).toHaveBeenCalledTimes(2);
+    expect(testHarness.connect).not.toHaveBeenCalled();
+    expect(testHarness.get).toHaveBeenCalledTimes(3);
+    expect(screen.getByRole('button', { name: 'Connect BYOS' })).toBeDisabled();
+  });
+
+  it('connects from the disconnected state, refreshes settings, and preserves other settings', async () => {
+    const user = userEvent.setup();
+    const initial = settings({
+      editorMode: 'paragraphs-only',
+      pageIdentityExclusions: [
+        { origin: 'https://example.com', parameterNames: ['session'] },
+      ],
+    });
+    const testHarness = harness(initial);
+    await renderReady(testHarness);
+
+    await user.click(screen.getByRole('button', { name: 'Connect BYOS' }));
+
+    expect(await screen.findByText('Connected')).toBeInTheDocument();
+    expect(testHarness.connect).toHaveBeenCalledOnce();
+    expect(testHarness.get).toHaveBeenCalledTimes(2);
+    expect(testHarness.current()).toEqual({
+      ...initial,
+      byosConnection: connection(),
+    });
+    expect(screen.getByRole('combobox', { name: 'Editor mode' })).toHaveValue(
+      'paragraphs-only',
+    );
+    expect(
+      screen.getByRole('button', {
+        name: 'Remove session from https://example.com',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('sanitizes a connect failure and retries successfully after refreshing actual state', async () => {
+    const user = userEvent.setup();
+    const testHarness = harness();
+    testHarness.connect.mockRejectedValueOnce(
+      new ByosError('token-failed', 'sentinel-token sentinel-callback'),
+    );
+    await renderReady(testHarness);
+
+    await user.click(screen.getByRole('button', { name: 'Connect BYOS' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'BYOS connection was not completed. Retry the connection.',
+    );
+    expect(screen.getByRole('alert')).not.toHaveTextContent('sentinel');
+    expect(testHarness.get).toHaveBeenCalledTimes(2);
+
+    await user.click(
+      screen.getByRole('button', { name: 'Retry BYOS connection' }),
+    );
+
+    expect(await screen.findByText('Connected')).toBeInTheDocument();
+    expect(testHarness.connect).toHaveBeenCalledTimes(2);
+    expect(testHarness.get).toHaveBeenCalledTimes(3);
+  });
+
+  it('shows connected status, human-readable expiry, last sync, and no secret material', async () => {
+    const currentConnection = {
+      ...connection(),
+      lastSuccessfulSyncAt: '2026-07-25T12:15:00.000Z',
+    };
+    const testHarness = harness(
+      settings({ byosConnection: currentConnection }),
+    );
+    await renderReady(testHarness);
+
+    expect(screen.getByText('Local + BYOS')).toBeInTheDocument();
+    expect(screen.getByText('Connected')).toBeInTheDocument();
+    expect(screen.getByText('Token expires')).toBeInTheDocument();
+    expect(screen.getByText('Last successful sync')).toBeInTheDocument();
+    expect(
+      document.querySelector(`time[datetime="${currentConnection.expiresAt}"]`),
+    ).toHaveTextContent(/\S/u);
+    expect(
+      document.querySelector(
+        `time[datetime="${currentConnection.lastSuccessfulSyncAt}"]`,
+      ),
+    ).toHaveTextContent(/\S/u);
+    expect(screen.queryByText(currentConnection.accessToken)).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Disconnect BYOS' }),
+    ).toBeEnabled();
+  });
+
+  it('wakes exactly at token expiry and transitions to reconnect required', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(NOW));
+    const expiresAt = '2026-07-25T12:00:01.000Z';
     const testHarness = harness(
       settings({
         byosConnection: {
-          accessToken: 'existing-token',
-          connectedAt: '2026-07-25T10:00:00Z',
-          expiresAt: '2026-08-01T10:00:00Z',
+          ...connection(),
+          expiresAt,
+        },
+      }),
+    );
+    testHarness.clock.mockImplementation(() => new Date(Date.now()));
+    const rendered = render(
+      <OptionsApp dependencies={testHarness.dependencies} />,
+    );
+
+    try {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText('Connected')).toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(999);
+      });
+      expect(screen.getByText('Connected')).toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(screen.getByText('Reconnect required')).toBeInTheDocument();
+    } finally {
+      rendered.unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it('clears a pending expiry wake when Options unmounts', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(NOW));
+    const testHarness = harness(settings({ byosConnection: connection() }));
+    testHarness.clock.mockImplementation(() => new Date(Date.now()));
+    const rendered = render(
+      <OptionsApp dependencies={testHarness.dependencies} />,
+    );
+
+    try {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(vi.getTimerCount()).toBe(1);
+
+      rendered.unmount();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      rendered.unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows reconnect and disconnect controls for an expired connection', async () => {
+    const user = userEvent.setup();
+    const testHarness = harness(
+      settings({
+        byosConnection: {
+          ...connection(),
+          expiresAt: NOW,
         },
       }),
     );
     await renderReady(testHarness);
 
-    expect(screen.getByText('Local + BYOS')).toBeInTheDocument();
+    expect(screen.getByText('Reconnect required')).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Manage BYOS — coming next' }),
+      screen.getByRole('button', { name: 'Reconnect BYOS' }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole('button', { name: 'Disconnect BYOS' }),
+    ).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: 'Reconnect BYOS' }));
+    expect(await screen.findByText('Connected')).toBeInTheDocument();
+    expect(testHarness.connect).toHaveBeenCalledOnce();
+  });
+
+  it('disconnects, refreshes actual settings, and preserves editor and identity settings', async () => {
+    const user = userEvent.setup();
+    const initial = settings({
+      editorMode: 'paragraphs-only',
+      pageIdentityExclusions: [
+        { origin: 'https://example.com', parameterNames: ['session'] },
+      ],
+      byosConnection: connection(),
+    });
+    const testHarness = harness(initial);
+    await renderReady(testHarness);
+
+    await user.click(screen.getByRole('button', { name: 'Disconnect BYOS' }));
+
+    expect(await screen.findByText('Not connected')).toBeInTheDocument();
+    expect(testHarness.disconnect).toHaveBeenCalledOnce();
+    expect(testHarness.get).toHaveBeenCalledTimes(2);
+    expect(testHarness.current()).toEqual({
+      schemaVersion: 1,
+      editorMode: 'paragraphs-only',
+      pageIdentityExclusions: initial.pageIdentityExclusions,
+    });
+  });
+
+  it('retains refreshed connected state after disconnect failure and retries', async () => {
+    const user = userEvent.setup();
+    const testHarness = harness(settings({ byosConnection: connection() }));
+    testHarness.disconnect.mockRejectedValueOnce(
+      new ByosError('disconnect-failed', 'sentinel-access-token'),
+    );
+    await renderReady(testHarness);
+
+    await user.click(screen.getByRole('button', { name: 'Disconnect BYOS' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'BYOS could not be disconnected safely. Retry disconnect.',
+    );
+    expect(screen.getByRole('alert')).not.toHaveTextContent('sentinel');
+    expect(screen.getByText('Connected')).toBeInTheDocument();
+    expect(testHarness.get).toHaveBeenCalledTimes(2);
+
+    await user.click(screen.getByRole('button', { name: 'Retry disconnect' }));
+
+    expect(await screen.findByText('Not connected')).toBeInTheDocument();
+    expect(testHarness.disconnect).toHaveBeenCalledTimes(2);
+    expect(testHarness.get).toHaveBeenCalledTimes(3);
+  });
+
+  it('reports refresh failure after an action and retries status refresh without repeating authorization', async () => {
+    const user = userEvent.setup();
+    const testHarness = harness();
+    await renderReady(testHarness);
+    testHarness.get.mockRejectedValueOnce(
+      new Error('sentinel-refresh secret-token'),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Connect BYOS' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'PagePerch could not refresh the actual BYOS connection state.',
+    );
+    expect(screen.getByRole('alert')).not.toHaveTextContent('sentinel');
+    expect(screen.getByText('BYOS status unknown')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Connect BYOS' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reconnect BYOS' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Disconnect BYOS' }),
+    ).toBeNull();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Retry status refresh' }),
+    );
+
+    expect(await screen.findByText('Connected')).toBeInTheDocument();
+    expect(testHarness.connect).toHaveBeenCalledOnce();
+    expect(testHarness.get).toHaveBeenCalledTimes(3);
+    expect(
+      screen.getByRole('button', { name: 'Disconnect BYOS' }),
+    ).toBeEnabled();
+  });
+
+  it('suppresses repeated disconnect while status refresh is required', async () => {
+    const user = userEvent.setup();
+    const testHarness = harness(settings({ byosConnection: connection() }));
+    await renderReady(testHarness);
+    testHarness.get.mockRejectedValueOnce(new Error('sentinel-refresh'));
+
+    await user.click(screen.getByRole('button', { name: 'Disconnect BYOS' }));
+
+    expect(await screen.findByText('BYOS status unknown')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Disconnect BYOS' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', {
+        name: 'Remove local BYOS connection',
+      }),
+    ).toBeNull();
+    expect(testHarness.disconnect).toHaveBeenCalledOnce();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Retry status refresh' }),
+    );
+
+    expect(await screen.findByText('Not connected')).toBeInTheDocument();
+    expect(testHarness.disconnect).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button', { name: 'Connect BYOS' })).toBeEnabled();
+  });
+
+  it('disables conflicting controls and prevents duplicate connect while busy in Strict Mode', async () => {
+    let finishConnect: (() => void) | undefined;
+    const pendingConnect = new Promise<void>((resolve) => {
+      finishConnect = resolve;
+    });
+    const testHarness = harness();
+    testHarness.connect.mockReturnValueOnce(pendingConnect);
+    render(
+      <StrictMode>
+        <OptionsApp dependencies={testHarness.dependencies} />
+      </StrictMode>,
+    );
+    await screen.findByRole('heading', { level: 2, name: 'Editor' });
+    const connectButton = screen.getByRole('button', {
+      name: 'Connect BYOS',
+    });
+
+    fireEvent.click(connectButton);
+    fireEvent.click(connectButton);
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Connecting BYOS',
+    );
+    expect(testHarness.connect).toHaveBeenCalledOnce();
+    expect(
+      screen.getByRole('combobox', { name: 'Editor mode' }),
     ).toBeDisabled();
+    expect(screen.getByLabelText('Exact website origin')).toBeDisabled();
+    expect(screen.getByLabelText('Query parameter name')).toBeDisabled();
+    expect(connectButton).toBeDisabled();
+
+    testHarness.get.mockResolvedValueOnce(
+      settings({ byosConnection: connection() }),
+    );
+    finishConnect?.();
+    expect(await screen.findByText('Connected')).toBeInTheDocument();
+  });
+
+  it('handles an injected invalid clock as reconnect-required without leaking errors', async () => {
+    const testHarness = harness(settings({ byosConnection: connection() }));
+    testHarness.clock.mockReturnValue(new Date(Number.NaN));
+    await renderReady(testHarness);
+
+    expect(screen.getByText('Reconnect required')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
     expect(
-      screen.queryByText(/sign in|oauth|disconnect/iu),
-    ).not.toBeInTheDocument();
+      screen.getByRole('button', { name: 'Reconnect BYOS' }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole('button', { name: 'Disconnect BYOS' }),
+    ).toBeEnabled();
   });
 
   it('adds one normalized exclusion through the executor, refreshes settings, and clears inputs only on success', async () => {

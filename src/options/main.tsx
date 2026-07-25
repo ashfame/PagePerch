@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { createByosClient } from '../background/byosClient';
 import { ChromeLocalIdentityMigrationPersistence } from '../repositories/chromeLocalIdentityMigrationPersistence';
 import { ChromeLocalSettingsRepository } from '../repositories/chromeLocalSettingsRepository';
 import { IdentityMigrationExecutor } from '../services/identityMigrationExecutor';
@@ -15,10 +16,12 @@ if (!(rootElement instanceof HTMLElement)) {
 
 const settings = new ChromeLocalSettingsRepository();
 const pageIdentity = new DefaultPageIdentityService();
+const byosClient = createByosClient();
+const clock = () => new Date();
 const migration = new IdentityMigrationExecutor({
   persistence: new ChromeLocalIdentityMigrationPersistence(),
   pageIdentityService: pageIdentity,
-  clock: () => new Date(),
+  clock,
   operationIdFactory: () => crypto.randomUUID(),
   revisionIdFactory: () => crypto.randomUUID(),
 });
@@ -28,6 +31,11 @@ createRoot(rootElement).render(
     <OptionsApp
       dependencies={{
         builtInExclusions: pageIdentity.builtInExclusions,
+        byos: {
+          clock,
+          config: byosClient.config,
+          connection: byosClient.coordinator,
+        },
         migration,
         settings,
       }}

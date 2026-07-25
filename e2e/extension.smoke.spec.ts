@@ -95,6 +95,14 @@ test('loads the unpacked module worker and both branded React surfaces', async (
         name: 'PagePerch settings',
       }),
     ).toBeVisible();
+    await expect(
+      session.page.getByText(
+        'BYOS connection is unavailable because this build has no public client ID.',
+      ),
+    ).toBeVisible();
+    await expect(
+      session.page.getByRole('button', { name: 'Connect BYOS' }),
+    ).toBeDisabled();
 
     await session.page.setViewportSize({ width: 280, height: 720 });
     await session.page.emulateMedia({

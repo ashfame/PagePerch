@@ -79,18 +79,18 @@
 
 ## PP-006 — Implement BYOS OAuth and Credential Lifecycle
 
-- Status: in progress
+- Status: completed
 - Priority: P0
 - Dependencies: PP-001, PP-003A
 - Spec or plan references: `byos_integrations.md`; BYOS integration; Settings page
 - Acceptance criteria: PKCE values use secure randomness; session state survives worker suspension; callback state and errors are validated; public-client token exchange is exact; token expiry is skewed early; S3 credentials and secret exist only in memory; missing build config and reconnect-required states are actionable; disconnect clears only local connection material.
 - Suggested files: `src/byos/`, settings repository, options controls, tests
 - Test expectations: Deterministic crypto/network mocks covering success, state mismatch, callback/token errors, expiry, missing config, and disconnect
-- Notes: PP-006A is independently approved. The extension-side client generates S256 PKCE with Web Crypto, persists only the pending verifier/state in `chrome.storage.session`, validates the exact callback and storage-only token response, stores the early-expiring OAuth token through an atomic settings patch, issues protocol credentials through the established BYOS endpoints, and keeps access key/secret/bucket only in a cancellation-safe memory cache. Disconnect resumes any legitimate pending identity migration, invalidates late OAuth/credential completion, clears transient/local connection material, and leaves notes and remote objects untouched. Options controls remain PP-006B. Never request identity scopes or persist the S3 secret.
+- Notes: PP-006A and PP-006B are independently approved. This is extension-side integration with the established BYOS service, not a server implementation. The client generates S256 PKCE with Web Crypto, persists only the pending verifier/state in `chrome.storage.session`, validates the exact callback and storage-only token response, stores the early-expiring OAuth token through an atomic settings patch, issues protocol credentials through the established BYOS endpoints, and keeps access key/secret/bucket only in a cancellation-safe memory cache. Disconnect resumes any legitimate pending identity migration, invalidates late OAuth/credential completion, clears transient/local connection material, and leaves notes and remote objects untouched. The accessible options UI exposes configuration availability, live token expiry, Connect/Reconnect/Disconnect, refresh recovery, and config-less cleanup without reading protocol credentials or claiming that sync exists before PP-007. Never request identity scopes or persist the S3 secret.
 
 ## PP-007 — Implement S3 Replica and Sync Engine
 
-- Status: not started
+- Status: in progress
 - Priority: P0
 - Dependencies: PP-003B, PP-006
 - Spec or plan references: Internal interfaces; Data model reconciliation; BYOS integration
