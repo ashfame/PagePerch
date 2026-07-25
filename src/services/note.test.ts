@@ -124,6 +124,20 @@ class MemoryNoteRepository implements NoteRepository {
     this.records.set(snapshot.pageKey, snapshot);
   }
 
+  async putIfCurrent(
+    expected: NoteRecordV1 | undefined,
+    current: NoteRecordV1,
+  ): Promise<'applied' | 'mismatch'> {
+    const existing = this.records.get(current.pageKey);
+
+    if (JSON.stringify(existing) !== JSON.stringify(expected)) {
+      return 'mismatch';
+    }
+
+    await this.put(current);
+    return 'applied';
+  }
+
   delete(pageKey: string): Promise<void> {
     this.records.delete(pageKey);
 

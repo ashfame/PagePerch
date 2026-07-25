@@ -20,6 +20,7 @@ PagePerch protects private note content, canonical URLs and titles, OAuth access
 - Clear token, PKCE state, in-memory credentials, and connection metadata on disconnect while retaining notes, tombstones, and remote objects.
 - Treat connect and credential issuance as cancellable generations: disconnect returns without waiting for interactive authorization, and any late session/token/credential completion is cleared or rejected before it can restore connection state or return a secret.
 - Create the S3 client only after acquiring usable temporary credentials, scope it to one repository operation, destroy it afterward, and accept the bucket only from that issued credential result.
+- Persist only page key, revision ID, bounded attempt count, and next-attempt time in the sync queue; never duplicate note bodies, URLs, titles, OAuth tokens, or S3 material there.
 - Redact token responses, authorization codes, signed headers, credentials, and note bodies from diagnostics and CI artifacts.
 
 ## Package Controls

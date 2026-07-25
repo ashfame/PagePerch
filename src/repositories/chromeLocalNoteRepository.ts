@@ -1,6 +1,9 @@
 import type { NoteRecordV1 } from '../domain/note';
 import { IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY } from '../services/identityMigrationPersistence';
-import type { NoteRepository } from './noteRepository';
+import type {
+  NoteRepository,
+  NoteRepositoryConditionalPutResult,
+} from './noteRepository';
 import {
   enqueueStorageOperation,
   resolveChromeLocalStorageArea,
@@ -43,6 +46,29 @@ export function getNoteOriginIndexStorageKey(origin: string): string {
 
 function cloneNote(record: NoteRecordV1): NoteRecordV1 {
   return { ...record };
+}
+
+function notesEqual(
+  left: NoteRecordV1 | undefined,
+  right: NoteRecordV1 | undefined,
+): boolean {
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
+
+  return (
+    left.schemaVersion === right.schemaVersion &&
+    left.pageKey === right.pageKey &&
+    left.canonicalUrl === right.canonicalUrl &&
+    left.representativeUrl === right.representativeUrl &&
+    left.origin === right.origin &&
+    left.title === right.title &&
+    left.contentHtml === right.contentHtml &&
+    left.contentHash === right.contentHash &&
+    left.savedAt === right.savedAt &&
+    left.revisionId === right.revisionId &&
+    left.deletedAt === right.deletedAt
+  );
 }
 
 function cloneIndex(index: NoteOriginIndexV1): NoteOriginIndexV1 {
@@ -137,122 +163,41 @@ export class ChromeLocalNoteRepository implements NoteRepository {
   }
 
   async put(record: NoteRecordV1): Promise<void> {
-    if (!isNoteRecordV1(record)) {
+    const recordSnapshot = this.#validatePut(record);
+    await this.#enqueue(() => this.#putSnapshot(recordSnapshot));
+  }
+
+  async putIfCurrent(
+    expected: NoteRecordV1 | undefined,
+    record: NoteRecordV1,
+  ): Promise<NoteRepositoryConditionalPutResult> {
+    if (expected !== undefined && !isNoteRecordV1(expected)) {
       throw new RepositoryValidationError(
         'put',
-        'Cannot store an invalid NoteRecordV1.',
+        'A conditional note write requires a valid expected NoteRecordV1.',
       );
     }
 
-    const recordSnapshot = cloneNote(record);
+    const recordSnapshot = this.#validatePut(record);
+    const expectedSnapshot =
+      expected === undefined ? undefined : cloneNote(expected);
+
+    if (
+      expectedSnapshot !== undefined &&
+      expectedSnapshot.pageKey !== recordSnapshot.pageKey
+    ) {
+      throw new RepositoryValidationError(
+        'put',
+        'A conditional note write requires matching page keys.',
+      );
+    }
 
     return this.#enqueue(async () => {
-      const noteStorageKey = getNoteStorageKey(recordSnapshot.pageKey);
-      const existingValues = await storageGet(
-        this.#storageArea,
-        [IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY, noteStorageKey],
-        'put',
-      );
+      const applied = await this.#putSnapshot(recordSnapshot, {
+        record: expectedSnapshot,
+      });
 
-      if (
-        Object.prototype.hasOwnProperty.call(
-          existingValues,
-          IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY,
-        )
-      ) {
-        throw new RepositoryPendingIdentityMigrationError('put');
-      }
-
-      const existingValue = existingValues[noteStorageKey];
-      let existingRecord: NoteRecordV1 | undefined;
-
-      if (existingValue !== undefined) {
-        if (
-          !isNoteRecordV1(existingValue) ||
-          existingValue.pageKey !== recordSnapshot.pageKey
-        ) {
-          throw storedDataError(
-            noteStorageKey,
-            existingValue,
-            'The existing note record',
-          );
-        }
-
-        existingRecord = existingValue;
-      }
-
-      const origins = new Set([recordSnapshot.origin]);
-
-      if (existingRecord !== undefined) {
-        origins.add(existingRecord.origin);
-      }
-
-      const indexKeys = [...origins].map(getNoteOriginIndexStorageKey);
-      const storedIndexes = await storageGet(
-        this.#storageArea,
-        indexKeys,
-        'put',
-      );
-      const indexes = new Map<string, NoteOriginIndexV1>();
-
-      for (const origin of origins) {
-        const indexStorageKey = getNoteOriginIndexStorageKey(origin);
-        const storedIndex = storedIndexes[indexStorageKey];
-
-        if (storedIndex === undefined) {
-          indexes.set(origin, {
-            schemaVersion: NOTE_ORIGIN_INDEX_SCHEMA_VERSION,
-            origin,
-            pageKeys: [],
-          });
-          continue;
-        }
-
-        if (!isNoteOriginIndexV1(storedIndex, origin)) {
-          throw storedDataError(
-            indexStorageKey,
-            storedIndex,
-            'The existing note origin index',
-          );
-        }
-
-        indexes.set(origin, cloneIndex(storedIndex));
-      }
-
-      const changes: Record<string, unknown> = {
-        [noteStorageKey]: recordSnapshot,
-      };
-
-      if (
-        existingRecord !== undefined &&
-        existingRecord.origin !== recordSnapshot.origin
-      ) {
-        const oldIndex = indexes.get(existingRecord.origin);
-
-        if (oldIndex !== undefined) {
-          changes[getNoteOriginIndexStorageKey(existingRecord.origin)] = {
-            ...oldIndex,
-            pageKeys: oldIndex.pageKeys.filter(
-              (pageKey) => pageKey !== recordSnapshot.pageKey,
-            ),
-          } satisfies NoteOriginIndexV1;
-        }
-      }
-
-      const newIndex = indexes.get(recordSnapshot.origin);
-
-      if (newIndex === undefined) {
-        throw new Error('Expected a note origin index for the record origin.');
-      }
-
-      changes[getNoteOriginIndexStorageKey(recordSnapshot.origin)] = {
-        ...newIndex,
-        pageKeys: [
-          ...new Set([...newIndex.pageKeys, recordSnapshot.pageKey]),
-        ].sort(),
-      } satisfies NoteOriginIndexV1;
-
-      await storageSet(this.#storageArea, changes, 'put');
+      return applied ? 'applied' : 'mismatch';
     });
   }
 
@@ -412,6 +357,133 @@ export class ChromeLocalNoteRepository implements NoteRepository {
           return cloneNote(value);
         });
     });
+  }
+
+  #validatePut(record: NoteRecordV1): NoteRecordV1 {
+    if (!isNoteRecordV1(record)) {
+      throw new RepositoryValidationError(
+        'put',
+        'Cannot store an invalid NoteRecordV1.',
+      );
+    }
+
+    return cloneNote(record);
+  }
+
+  async #putSnapshot(
+    recordSnapshot: NoteRecordV1,
+    expectation?: { readonly record: NoteRecordV1 | undefined },
+  ): Promise<boolean> {
+    const noteStorageKey = getNoteStorageKey(recordSnapshot.pageKey);
+    const existingValues = await storageGet(
+      this.#storageArea,
+      [IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY, noteStorageKey],
+      'put',
+    );
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        existingValues,
+        IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY,
+      )
+    ) {
+      throw new RepositoryPendingIdentityMigrationError('put');
+    }
+
+    const existingValue = existingValues[noteStorageKey];
+    let existingRecord: NoteRecordV1 | undefined;
+
+    if (existingValue !== undefined) {
+      if (
+        !isNoteRecordV1(existingValue) ||
+        existingValue.pageKey !== recordSnapshot.pageKey
+      ) {
+        throw storedDataError(
+          noteStorageKey,
+          existingValue,
+          'The existing note record',
+        );
+      }
+
+      existingRecord = existingValue;
+    }
+
+    if (
+      expectation !== undefined &&
+      !notesEqual(existingRecord, expectation.record)
+    ) {
+      return false;
+    }
+
+    const origins = new Set([recordSnapshot.origin]);
+
+    if (existingRecord !== undefined) {
+      origins.add(existingRecord.origin);
+    }
+
+    const indexKeys = [...origins].map(getNoteOriginIndexStorageKey);
+    const storedIndexes = await storageGet(this.#storageArea, indexKeys, 'put');
+    const indexes = new Map<string, NoteOriginIndexV1>();
+
+    for (const origin of origins) {
+      const indexStorageKey = getNoteOriginIndexStorageKey(origin);
+      const storedIndex = storedIndexes[indexStorageKey];
+
+      if (storedIndex === undefined) {
+        indexes.set(origin, {
+          schemaVersion: NOTE_ORIGIN_INDEX_SCHEMA_VERSION,
+          origin,
+          pageKeys: [],
+        });
+        continue;
+      }
+
+      if (!isNoteOriginIndexV1(storedIndex, origin)) {
+        throw storedDataError(
+          indexStorageKey,
+          storedIndex,
+          'The existing note origin index',
+        );
+      }
+
+      indexes.set(origin, cloneIndex(storedIndex));
+    }
+
+    const changes: Record<string, unknown> = {
+      [noteStorageKey]: recordSnapshot,
+    };
+
+    if (
+      existingRecord !== undefined &&
+      existingRecord.origin !== recordSnapshot.origin
+    ) {
+      const oldIndex = indexes.get(existingRecord.origin);
+
+      if (oldIndex !== undefined) {
+        changes[getNoteOriginIndexStorageKey(existingRecord.origin)] = {
+          ...oldIndex,
+          pageKeys: oldIndex.pageKeys.filter(
+            (pageKey) => pageKey !== recordSnapshot.pageKey,
+          ),
+        } satisfies NoteOriginIndexV1;
+      }
+    }
+
+    const newIndex = indexes.get(recordSnapshot.origin);
+
+    if (newIndex === undefined) {
+      throw new Error('Expected a note origin index for the record origin.');
+    }
+
+    changes[getNoteOriginIndexStorageKey(recordSnapshot.origin)] = {
+      ...newIndex,
+      pageKeys: [
+        ...new Set([...newIndex.pageKeys, recordSnapshot.pageKey]),
+      ].sort(),
+    } satisfies NoteOriginIndexV1;
+
+    await storageSet(this.#storageArea, changes, 'put');
+    return true;
   }
 
   #assertPageKey(pageKey: string, operation: RepositoryOperation): void {

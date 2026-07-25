@@ -103,3 +103,11 @@
 - Options considered: Trust response metadata; read without limits; impose a small generic API limit; use conservative bounds above the current accepted large-note contract.
 - Consequences: Ordinary and established large notes remain syncable, oversized or implausibly large replicas fail atomically with redacted recovery errors, and a local note above the remote bound remains safely offline pending explicit product handling rather than being truncated.
 - Follow-up tasks: Surface the remote limit in PP-007 status and PP-009 documentation, measure realistic large-replica behavior in PP-010, and revise the bound only with memory/performance evidence.
+
+## 2026-07-25 — Persist Minimal Sync Intent and Hydrate Through Exact-Record CAS
+
+- Decision: Store one versioned queue entry per page with only page key, current revision ID, attempt count, and next-attempt timestamp; complete/fail entries through revision CAS; and apply a remote winner locally only when the complete current record still equals the engine snapshot.
+- Context: Local saves define product success and must remain durable through suspension and remote failure, while an upload or download already in flight must not clear or overwrite a newer user save. Revision IDs alone are not an atomic equality guarantee because the repository accepts any valid externally supplied record.
+- Options considered: Persist full record snapshots in the queue; rely on last writer wins; compare only revision IDs; use minimal intent plus queue revision CAS and local complete-record CAS under the shared storage lock.
+- Consequences: Repeated saves coalesce without duplicating note content, stale completion cannot remove newer intent, a remote hydration cannot overwrite even a same-revision divergent concurrent save, queue-only orphans can be removed safely, and worker restart reconstructs bounded retry state. A failed queue write does not invalidate an already durable local save; later full reconciliation repairs missing intent.
+- Follow-up tasks: Compose queue insertion and every required trigger in PP-007C, surface pending/error status, and retain race tests whenever note or queue persistence changes.

@@ -37,6 +37,12 @@ export function isPageKey(value: unknown): value is string {
   return isSha256Base64Url(value);
 }
 
+export function isRevisionId(value: unknown): value is string {
+  return (
+    typeof value === 'string' && value.length > 0 && value.trim() === value
+  );
+}
+
 export function isSha256Base64Url(value: unknown): value is string {
   return (
     typeof value === 'string' &&
@@ -140,7 +146,7 @@ export function isNoteRecordV1(value: unknown): value is NoteRecordV1 {
     typeof value.contentHtml !== 'string' ||
     !isSha256Base64Url(value.contentHash) ||
     !isUtcIsoTimestamp(value.savedAt) ||
-    !isNonEmptyString(value.revisionId)
+    !isRevisionId(value.revisionId)
   ) {
     return false;
   }

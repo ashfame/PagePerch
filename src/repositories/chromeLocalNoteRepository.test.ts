@@ -95,6 +95,84 @@ describe('ChromeLocalNoteRepository', () => {
     await expect(repository.listAll()).resolves.toEqual([tombstone]);
   });
 
+  it('conditionally hydrates only an absent record or the exact expected record', async () => {
+    const repository = new ChromeLocalNoteRepository(
+      new InMemoryChromeStorage(),
+    );
+    const first = note();
+    const replacement = note({
+      title: 'Remote replacement',
+      revisionId: 'revision-remote',
+    });
+
+    await expect(repository.putIfCurrent(undefined, first)).resolves.toBe(
+      'applied',
+    );
+    await expect(repository.putIfCurrent(undefined, replacement)).resolves.toBe(
+      'mismatch',
+    );
+    await expect(
+      repository.putIfCurrent(
+        note({ revisionId: 'revision-stale' }),
+        replacement,
+      ),
+    ).resolves.toBe('mismatch');
+    await expect(repository.putIfCurrent(first, replacement)).resolves.toBe(
+      'applied',
+    );
+    await expect(repository.get(PAGE_KEY_A)).resolves.toEqual(replacement);
+  });
+
+  it('rejects invalid or cross-page conditional expectations before storage access', async () => {
+    const storage = new InMemoryChromeStorage();
+    const repository = new ChromeLocalNoteRepository(storage);
+    const replacement = note({ revisionId: 'revision-replacement' });
+    const invalidExpected = {
+      ...note(),
+      revisionId: ' untrimmed ',
+    } as NoteRecordV1;
+    const crossPageExpected = note({
+      pageKey: PAGE_KEY_B,
+      canonicalUrl: 'https://example.com/b',
+      representativeUrl: 'https://example.com/b',
+    });
+
+    await expect(
+      repository.putIfCurrent(invalidExpected, replacement),
+    ).rejects.toBeInstanceOf(RepositoryValidationError);
+    await expect(
+      repository.putIfCurrent(crossPageExpected, replacement),
+    ).rejects.toBeInstanceOf(RepositoryValidationError);
+    expect(storage.getCalls).toEqual([]);
+    expect(storage.setCalls).toEqual([]);
+  });
+
+  it('atomically preserves a concurrent newer local save against a stale conditional replacement', async () => {
+    const storage = new InMemoryChromeStorage();
+    const repository = new ChromeLocalNoteRepository(storage);
+    const original = note();
+    const newerLocal = note({
+      savedAt: '2026-07-25T10:02:00.000Z',
+      revisionId: original.revisionId,
+      title: 'Newer local save',
+    });
+    const staleRemoteWinner = note({
+      savedAt: '2026-07-25T10:01:00.000Z',
+      revisionId: 'revision-remote',
+      title: 'Stale remote winner',
+    });
+    await repository.put(original);
+
+    const [saveResult, hydrationResult] = await Promise.all([
+      repository.put(newerLocal),
+      repository.putIfCurrent(original, staleRemoteWinner),
+    ]);
+
+    expect(saveResult).toBeUndefined();
+    expect(hydrationResult).toBe('mismatch');
+    await expect(repository.get(PAGE_KEY_A)).resolves.toEqual(newerLocal);
+  });
+
   it('physically deletes a current note and removes its origin membership', async () => {
     const storage = new InMemoryChromeStorage();
     const repository = new ChromeLocalNoteRepository(storage);
