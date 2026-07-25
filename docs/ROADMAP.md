@@ -26,6 +26,6 @@ Deliver public-client OAuth PKCE, state validation, early token expiry, one-time
 
 ## M4 — Release Confidence
 
-Status: in progress.
+Status: in progress; packaged browser coverage and the complete operator/user documentation are delivered, with the final deterministic release package and manual handoff remaining.
 
 Deliver unpacked-extension Playwright flows, production CSP/package audits, full failure-path coverage, CI parity, polished setup/privacy/permissions documentation, and a repeatable release checklist.

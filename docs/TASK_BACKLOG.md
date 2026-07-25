@@ -112,14 +112,14 @@
 
 ## PP-009 — Complete Product and Release Documentation
 
-- Status: not started
+- Status: completed
 - Priority: P1
 - Dependencies: PP-008
 - Spec or plan references: Documentation and Atomic Delivery; Assumptions and Deferred Work
 - Acceptance criteria: README covers setup, development, BYOS registration/configuration, storage, identity, permissions, privacy, limitations, testing, packaging, and release checks.
 - Suggested files: `README.md`, strategy/state docs
 - Test expectations: Markdown format check, link/path review, command verification
-- Notes: Follow the user's current scope and do not make licensing a documentation or readiness blocker.
+- Notes: `README.md` now covers local development, unpacked loading, exact approved public-client BYOS registration/build configuration, automatic queue-based synchronization, the local service-worker rationale, page identity and pragmatic collision stacking, storage/conflict semantics, permissions, privacy/security, tests, manual acceptance, release checks, troubleshooting, known limitations, and maintained-document links. Licensing is intentionally not a readiness blocker.
 
 ## PP-010 — Production-Readiness Audit and Hardening
 
