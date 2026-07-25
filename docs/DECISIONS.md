@@ -54,7 +54,7 @@
 - Context: The advisories propagate from three underlying Babel runtime RegExp-complexity, Showdown link-parsing ReDoS, and UUID buffer-handling issues. No non-breaking root remediation is available for the mandated editor version, and the audited bundle contains no remote code or forbidden evaluation.
 - Options considered: Abandon the required editor; force npm’s proposed downgrade; ignore the findings; lock, audit, document, and reassess before distribution.
 - Consequences: Product work can continue with deterministic audited artifacts, but release readiness cannot claim a clean dependency audit.
-- Follow-up tasks: Reassess available editor/package updates during PP-010 and test user-controlled content paths affected by Showdown.
+- Follow-up tasks: PP-010 confirmed that the registry still offers only breaking editor-generation and ESLint-major remediations; retain the sanitizer/adversarial editor coverage and reassess the pinned graph when a compatible isolated-editor generation is available.
 
 ## 2026-07-25 — Serialize Chrome Storage Index Mutations Across Extension Contexts
 

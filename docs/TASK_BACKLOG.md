@@ -123,11 +123,11 @@
 
 ## PP-010 — Production-Readiness Audit and Hardening
 
-- Status: not started
+- Status: completed
 - Priority: P0
 - Dependencies: PP-009
 - Spec or plan references: Entire acceptance plan
 - Acceptance criteria: Complete gate passes from clean install; dependency and package risks are reviewed; accessibility and error paths are audited; no hidden TODOs or secrets exist; compliance rows are tested or explicitly deferred; reproducible release artifact and checksum are generated without publishing.
 - Suggested files: Any narrowly justified fixes plus state documentation
 - Test expectations: `npm ci`, complete check, browser smoke, package inspection, clean-worktree verification
-- Notes: Use separate bounded corrective tasks for findings; do not combine unrelated hardening fixes.
+- Notes: Independently approved after adversarial corrective review. Clean `npm ci`, the complete 943-test/build/audit/browser gate, secret/TODO/source-map scans, dependency-risk review, accessibility/error-path review, and compliance review pass or have explicit manual boundaries. The dependency-free release packager captures and audits one immutable `dist/` snapshot, writes a deterministic 16-entry ZIP plus SHA-256 sidecar, rejects unsafe/aliased physical paths and concurrent runs, preflights ZIP limits, pairs archive/checksum publication, and retains exact recovery artifacts and locks on incomplete rollback. Two release runs produced SHA-256 `368041dfeb84ae21a4d98cabc568bf179682b008563f0d5f790f21018349321e`; external checksum, unzip, entry-order, manifest, and transient-file checks pass. Live approved-client BYOS and native toolbar-host verification remain manual.

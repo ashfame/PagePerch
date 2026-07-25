@@ -188,6 +188,7 @@ npm test
 npm run build
 npm run audit:csp
 npm run test:e2e
+npm run release:package
 ```
 
 Set `PAGEPERCH_HEADFUL=1` when running `npm run test:e2e` to display Chromium. The Playwright suite exercises the packaged worker and options page, a real editable Gutenberg surface, active-tab navigation, exact local persistence across panel reload and browser restart, and the root recent-note index. The native toolbar-to-side-panel host click remains an explicit manual check because Playwright cannot operate Chrome's browser toolbar.
@@ -219,9 +220,20 @@ Start from a clean commit and the pinned toolchain:
 npm ci
 npx playwright install chromium
 npm run check
+npm run release:package
 ```
 
-Inspect the generated `dist/` directory, verify the intended public `VITE_BYOS_CLIENT_ID` configuration, and load that exact build for the manual checklist. Never package `.env` files, browser profiles, test artifacts, coverage, source maps, private keys, OAuth tokens, or S3 credentials.
+`npm run release:package` rebuilds and audits `dist/`, captures one immutable audited snapshot, and creates `.release/pageperch-<version>.zip` plus `.release/pageperch-<version>.zip.sha256`. Archive paths and metadata are deterministic, repeated packaging of identical sources produces identical bytes, and the archive contains the extension files at its root. The command rejects concurrent runs, source/output aliases, symlinks, unsafe paths, source maps, credential-like material, manifest/package version drift, and unaudited mutations. Publication is rollback-safe; if automatic recovery cannot complete, the error reports a retained recovery directory and lock instead of deleting the only prior good artifact.
+
+For version `0.1.0`, verify and inspect the artifact on a system with `sha256sum` and `unzip`:
+
+```sh
+cd .release
+sha256sum -c pageperch-0.1.0.zip.sha256
+unzip -t pageperch-0.1.0.zip
+```
+
+Inspect the generated `dist/` directory, verify the intended public `VITE_BYOS_CLIENT_ID` configuration, and load that exact build for the manual checklist. To test the ZIP instead, extract it into a stable directory and select that directory with Chrome's **Load unpacked** control. Never package `.env` files, browser profiles, test artifacts, coverage, source maps, private keys, OAuth tokens, or S3 credentials.
 
 See [docs/DEPLOYMENT_STRATEGY.md](docs/DEPLOYMENT_STRATEGY.md), [docs/TEST_STRATEGY.md](docs/TEST_STRATEGY.md), and [docs/COMPLIANCE_MATRIX.md](docs/COMPLIANCE_MATRIX.md) for the maintained release evidence.
 

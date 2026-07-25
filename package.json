@@ -19,6 +19,7 @@
     "format:check": "prettier --check .",
     "generate:icons": "node scripts/generate-icons.ts",
     "lint": "eslint . --max-warnings 0",
+    "release:package": "npm run build && npm run audit:csp && node scripts/package-release.ts",
     "test": "vitest run --coverage",
     "test:e2e": "npm run build && playwright test",
     "typecheck": "tsc --noEmit"
