@@ -22,6 +22,8 @@ An edit is debounced for 750 ms. `NoteService` normalizes and hashes serialized 
 
 An exact-origin root renders its editable root note and a sibling recent-note list sourced through `NoteService.listRecentByOrigin`. The list preserves repository recency order, omits its root key and deleted records defensively, refreshes after only relevant local note/index changes, suppresses late loads after root changes, and never transfers editor ownership. Opening an entry requires the exact stored canonical URL and creates one active Chrome tab.
 
+Identity-rule changes first pass through a pure injected planner. It validates one exact-origin settings transition, accepts stored records only when they match the current or requested identity, produces normalized immutable destination/tombstone records with fixed mutation versions, and exposes canonical fingerprints plus a strict parser for a later durable executor. Parsing proves journal integrity and CAS metadata; the executor must still compare the complete current origin inventory before applying any phase.
+
 `SyncEngine` compares local and remote records by `savedAt`, then lexicographic `revisionId` when timestamps are equal. It writes the deterministic winner to the older replica, coalesces outbound work by page key, retains failed work durably, and keeps temporary S3 secrets only in service-worker memory.
 
 ## Storage Namespaces

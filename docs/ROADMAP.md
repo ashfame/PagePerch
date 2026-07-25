@@ -8,13 +8,13 @@ Deliver the committed source inputs, durable orchestration state, reproducible N
 
 ## M1 — Offline Notes
 
-Status: in progress.
+Status: completed.
 
 Deliver canonical page identity, built-in and custom exclusion matching, versioned Chrome local repositories, local-first note service, per-page Gutenberg editor, autosave state, unsupported-page handling, exact-origin root index, navigation handling, editor modes, automatic theme behavior, and accessibility coverage.
 
 ## M2 — Identity Migration
 
-Status: not started.
+Status: in progress.
 
 Deliver validated exact-origin settings, collision-aware Gutenberg merge documents, deterministic oldest-to-newest ordering, old-key tombstones, idempotent repeated migration, representative-URL moves on exclusion removal, and migration-focused tests.
 

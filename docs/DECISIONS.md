@@ -79,3 +79,11 @@
 - Options considered: Keep ownership entirely in a component hook; use implicit module globals; allow replacement before cleanup; inject one explicit app-lifetime coordinator.
 - Consequences: React connections only publish desired sessions and views. Runtime failures remain retryable on the same page but follow navigation or disconnect automatically, while stop/unregister failures block transfer without losing flushability. Late startup outcomes are observed and cannot resurrect stale ownership.
 - Follow-up tasks: Keep adversarial deferred-start, failure-transition, StrictMode, and cross-remount tests whenever draft or navigation lifetimes change.
+
+## 2026-07-25 — Separate Identity Migration Planning from Durable Execution
+
+- Decision: Represent one exact-origin exclusion addition/removal as a deeply immutable versioned plan with fixed destination/tombstone records, canonical settings/note fingerprints, and a strict dependency-free persisted-plan parser; execute that plan later through CAS-checked resumable phases.
+- Context: Adding a rule can merge multiple notes while removal must move the indivisible combined note through its stored representative URL. Chrome local storage offers asynchronous bulk operations but no documented transactional guarantee across the required destination, tombstone, index, settings, and journal phases.
+- Options considered: Mutate notes directly from the options UI; rely on one optimistic bulk write; recompute merge content after each failure; persist a deterministic plan and resume it only while the complete expected inventory still matches.
+- Consequences: The merge document, mutation versions, and source tombstones are fixed before persistence, so retry cannot nest headings or duplicate content. Records matching either legitimate side of the transition are accepted, enabling old-key tombstones and requested-identity collisions. Parser success proves structural and cryptographic self-consistency but not semantic provenance, so the executor must verify exact current-state fingerprints and never overwrite drifted notes.
+- Follow-up tasks: Implement the durable journal/executor, block or resume conflicting mutations, test every phase interruption and CAS mismatch, then integrate the validated options controls.

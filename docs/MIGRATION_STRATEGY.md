@@ -14,6 +14,10 @@ The migration records enough representative URL and operation metadata to recogn
 
 When a custom exclusion is removed, recalculate the combined record from its stored representative URL and move it to that identity while tombstoning the previous key. Do not attempt to parse or split earlier merge documents because that could lose subsequent user edits.
 
+During either transition, a stored record is legitimate when its canonical identity matches the current rules or the requested rules. This explicitly admits old-key tombstones produced by an earlier addition, an existing requested-identity destination tombstone, and resumable requested-identity collisions while rejecting records that match neither side. Output content is normalized with the same Gutenberg invariant used by ordinary saves before its hash is generated.
+
 ## Failure Recovery
 
 Treat each migration as resumable steps with a durable operation ID and phase. Destination writes precede source tombstones, and repeated runs compare revisions before applying work. BYOS synchronization transports the resulting normal records and tombstones; it does not independently reinterpret rule changes.
+
+Persist only plans that pass the versioned runtime parser. Before every phase, recompute the exported canonical settings and note fingerprints and compare the complete exact-origin inventory to the plan; a parser-valid journal is structurally and cryptographically self-consistent but is not proof of semantic provenance. If current state differs, do not overwrite it: resume only a matching persisted plan or discard it through an explicit recovery/replan path that rederives destinations with the production identity service.

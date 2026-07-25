@@ -68,14 +68,14 @@
 
 ## PP-005 — Add Identity Settings and Migrations
 
-- Status: not started
+- Status: in progress
 - Priority: P0
 - Dependencies: PP-003B, PP-004
 - Spec or plan references: Settings page; canonical identity migration requirements
 - Acceptance criteria: Exact-origin/name validation and duplicate prevention work; adding exclusions recalculates identities, merges collisions in deterministic Gutenberg documents, and tombstones former keys; removal moves combined notes without attempted splitting; repeated migration is idempotent.
 - Suggested files: `src/options/`, `src/services/identity-migration*`, repositories, tests
 - Test expectations: Settings component tests and migration unit/integration tests
-- Notes: Preserve former source URLs in merge headings and representative URLs for removal.
+- Notes: PP-005A1 is independently approved: a pure injected planner accepts exactly one normalized exact-origin addition/removal, verifies stored records against either legitimate side of that transition, derives requested identities from representative URLs, emits valid immutable destination/tombstone records, merges collisions under escaped former-source headings in deterministic oldest-first order, preserves an excluded-parameter representative for later removal, normalizes Gutenberg output, and exposes canonical CAS fingerprints plus a strict dependency-free persisted-plan parser. Preserve former source URLs in merge headings and representative URLs for removal. The journaled executor and options UI remain.
 
 ## PP-006 — Implement BYOS OAuth and Credential Lifecycle
 

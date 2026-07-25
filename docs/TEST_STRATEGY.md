@@ -2,7 +2,7 @@
 
 ## Test Pyramid
 
-- Unit tests cover canonicalization, exclusion matching, hashing, root detection, content normalization, record comparison, PKCE primitives, validators, schema migrations, queue coalescing, and retry scheduling with injected clocks and randomness.
+- Unit tests cover canonicalization, exclusion matching, hashing, root detection, identity-transition planning, collision merging, persisted-plan parsing, content normalization, record comparison, PKCE primitives, validators, schema migrations, queue coalescing, and retry scheduling with injected clocks and randomness.
 - Repository and service tests run against a faithful in-memory mock of `chrome.storage.local` and `chrome.storage.session`, including change events, error paths, large Gutenberg documents, restart reconstruction, and migrations.
 - React component tests use React Testing Library with explicit fake timers and `matchMedia`, Chrome API, and service mocks to verify user-visible state, keyboard behavior, focus, automatic theme changes, navigation, root-index loading/refresh/open failures, and BYOS controls.
 - Transport tests mock `fetch` and AWS SDK request handling while asserting exact OAuth form fields, scope, path-style S3 configuration, deterministic keys, credential lifetime, and partial failure behavior without making production requests.
@@ -15,7 +15,7 @@
 
 ## Coverage Priorities
 
-Acceptance-critical branches require direct tests: unsupported schemes; global/custom exclusion scope; duplicate queries; identity collisions; unchanged saves; untouched-empty clears; tombstones; root-only exact-origin indexing and canonical opening; exact timestamp conflicts; expired OAuth; state mismatch; one-time secret disposal; local-newer and remote-newer reconciliation; failed upload coalescing; restart recovery; disconnect/reconnect; missing client configuration; and dark/light live changes.
+Acceptance-critical branches require direct tests: unsupported schemes; global/custom exclusion scope; duplicate queries; identity collisions; addition-output-to-removal-input lifecycle; persisted migration corruption and CAS mismatch; unchanged saves; untouched-empty clears; tombstones; root-only exact-origin indexing and canonical opening; exact timestamp conflicts; expired OAuth; state mismatch; one-time secret disposal; local-newer and remote-newer reconciliation; failed upload coalescing; restart recovery; disconnect/reconnect; missing client configuration; and dark/light live changes.
 
 ## Determinism
 
