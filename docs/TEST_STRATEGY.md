@@ -11,7 +11,7 @@
 
 ## Required Gates
 
-`npm run check` aggregates formatting, ESLint, strict TypeScript, Vitest coverage, production build, CSP/package audit, and stable browser smoke tests. `npm run release:package` repeats the production build/audits before creating the deterministic artifact and checksum. CI starts from `npm ci` under Node.js 24.18.0 and uploads only non-sensitive failure artifacts.
+`npm run check` aggregates formatting, ESLint, strict TypeScript, Vitest coverage, production build, CSP/package audit, and stable browser smoke tests. `npm run release:package` repeats the production build/audits before creating the deterministic artifact and checksum. CI starts from `npm ci` under Node.js 24.18.0, runs unfiltered Vitest discovery for the complete suite, preserves the unpacked Chromium/Xvfb smoke gate, then builds exactly one release ZIP and requires its sidecar to contain exactly the independently computed archive-specific checksum before strict checksum and ZIP validation.
 
 ## Coverage Priorities
 

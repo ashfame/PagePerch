@@ -42,7 +42,8 @@ jobs:
       - name: Check types
         run: npm run typecheck
 
-      - name: Run unit and component tests
+      # No file or name filters: Vitest must discover the complete suite, including build/release tests.
+      - name: Run complete Vitest suite
         run: npm test
 
       - name: Build extension
@@ -53,3 +54,41 @@ jobs:
 
       - name: Smoke-test unpacked extension
         run: xvfb-run --auto-servernum env PAGEPERCH_HEADFUL=1 npm run test:e2e
+
+      - name: Build deterministic release package
+        run: npm run release:package
+
+      - name: Verify release checksum and ZIP integrity
+        shell: bash
+        run: |
+          shopt -s nullglob
+          archives=(.release/*.zip)
+          checksums=(.release/*.zip.sha256)
+
+          if (( ${#archives[@]} != 1 || ${#checksums[@]} != 1 )); then
+            echo "Expected exactly one release archive and checksum."
+            exit 1
+          fi
+
+          archive="${archives[0]}"
+          checksum="${checksums[0]}"
+          if [[ "$checksum" != "$archive.sha256" ]]; then
+            echo "Release archive and checksum names do not match."
+            exit 1
+          fi
+
+          (
+            cd .release
+            archive_name="${archive##*/}"
+            checksum_name="${checksum##*/}"
+            expected_checksum="$(sha256sum -- "$archive_name")"
+            mapfile -t checksum_lines < "$checksum_name"
+
+            if (( ${#checksum_lines[@]} != 1 )) || [[ -z "${checksum_lines[0]}" ]] || [[ "${checksum_lines[0]}" != "$expected_checksum" ]]; then
+              echo "Release checksum must contain exactly the checksum for $archive_name."
+              exit 1
+            fi
+
+            sha256sum --check --strict -- "$checksum_name"
+            unzip -t "$archive_name"
+          )
