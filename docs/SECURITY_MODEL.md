@@ -19,6 +19,7 @@ PagePerch protects private note content, canonical URLs and titles, OAuth access
 - Store the OAuth access token and an expiry adjusted at least 60 seconds early, but never persist the S3 secret, access key, or bucket alias.
 - Clear token, PKCE state, in-memory credentials, and connection metadata on disconnect while retaining notes, tombstones, and remote objects.
 - Treat connect and credential issuance as cancellable generations: disconnect returns without waiting for interactive authorization, and any late session/token/credential completion is cleared or rejected before it can restore connection state or return a secret.
+- Create the S3 client only after acquiring usable temporary credentials, scope it to one repository operation, destroy it afterward, and accept the bucket only from that issued credential result.
 - Redact token responses, authorization codes, signed headers, credentials, and note bodies from diagnostics and CI artifacts.
 
 ## Package Controls
@@ -27,4 +28,4 @@ The production audit rejects `eval`, `new Function`, remote executable reference
 
 ## Abuse and Failure Cases
 
-Invalid or unsupported URLs do not reach storage. Settings validate exact HTTP(S) origins and parameter names. Record deserialization rejects malformed schema data without executing it. Remote JSON is treated as untrusted input and validated before reconciliation. Retry work is bounded, deduplicated, and alarm-driven to avoid loops or resource exhaustion. User-facing errors remain actionable without leaking sensitive response content.
+Invalid or unsupported URLs do not reach storage. Settings validate exact HTTP(S) origins and parameter names. Record deserialization rejects malformed schema data without executing it. Remote JSON is treated as untrusted input with fatal UTF-8 decoding, exact schema/key checks, bounded body/count processing, and no diagnostic echo before reconciliation. Retry work is bounded, deduplicated, and alarm-driven to avoid loops or resource exhaustion. User-facing errors remain actionable without leaking sensitive response content.

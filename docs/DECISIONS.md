@@ -95,3 +95,11 @@
 - Options considered: Persist S3 credentials; reuse one module promise without invalidation; cancel by waiting for every remote operation; persist only the OAuth token and reacquire credentials with lifecycle generations.
 - Consequences: A fresh service-worker realm reissues protocol credentials from a usable token. Disconnect does not wait for browser consent, invalidates in-flight work, clears any late PKCE state, rejects late secrets before returning them, and never touches local notes or remote objects.
 - Follow-up tasks: Reuse the provider from PP-007 synchronization, keep token expiry/reconnect visible in options, and preserve cancellation tests around every new remote trigger.
+
+## 2026-07-25 — Bound Remote Replica Reads Without Shrinking the Established Large-Note Contract
+
+- Decision: Reject individual remote v1 note objects above 16 MiB and replica listings above 10,000 exact note keys before reconciliation, while retaining tested round-trip support above the established 8 MiB local repository fixture.
+- Context: Browser S3 bodies can stream or materialize through several SDK adapters, and malformed or unexpectedly large private-bucket content must not exhaust an MV3 worker. The existing product already accepts multi-megabyte Gutenberg notes.
+- Options considered: Trust response metadata; read without limits; impose a small generic API limit; use conservative bounds above the current accepted large-note contract.
+- Consequences: Ordinary and established large notes remain syncable, oversized or implausibly large replicas fail atomically with redacted recovery errors, and a local note above the remote bound remains safely offline pending explicit product handling rather than being truncated.
+- Follow-up tasks: Surface the remote limit in PP-007 status and PP-009 documentation, measure realistic large-replica behavior in PP-010, and revise the bound only with memory/performance evidence.
