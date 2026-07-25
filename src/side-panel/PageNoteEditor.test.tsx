@@ -7,6 +7,7 @@ import type { initializeEditor as initializeEditorType } from '@automattic/isola
 import apiFetch from '@wordpress/api-fetch';
 // @ts-expect-error WordPress ships declarations without exposing them in its package metadata.
 import * as wordpressBlocks from '@wordpress/blocks';
+import { RichTextData } from '@wordpress/rich-text';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const editorBoundary = vi.hoisted(
@@ -67,9 +68,11 @@ interface WordPressBlocksTestApi {
     innerBlocks?: readonly TestBlock[],
   ) => TestBlock;
   readonly serialize: (blocks: readonly TestBlock[]) => string;
+  readonly parse: (content: string) => TestBlock[];
+  readonly rawHandler: (options: { readonly HTML: string }) => TestBlock[];
 }
 
-const { createBlock, serialize } =
+const { createBlock, parse, rawHandler, serialize } =
   wordpressBlocks as unknown as WordPressBlocksTestApi;
 
 function testBlock(
@@ -893,6 +896,59 @@ describe('PageNoteEditor lifecycle and save contract', () => {
     expect(editedContent).toBe(
       '<!-- wp:paragraph -->\n<p>User edit</p>\n<!-- /wp:paragraph -->',
     );
+  });
+
+  it('accepts only genuine parser rich text, sanitizes it, and ignores spoof conversion methods during hydration', () => {
+    const onContentChange = vi.fn();
+    const initialContent =
+      '<!-- wp:paragraph -->\n<p>Persisted <strong>safe text</strong> <a href="javascript:alert(1)">unsafe link</a><script>unsafe element</script> <a href="https://safe.example/path">safe link</a></p>\n<!-- /wp:paragraph -->';
+    render(
+      <PageNoteEditor
+        {...createProps({
+          initialContentHtml: initialContent,
+          onContentChange,
+        })}
+      />,
+    );
+    const rawParsed = parse(initialContent);
+    expect(rawParsed[0]?.attributes.content).toBeInstanceOf(RichTextData);
+    let hydratedBlocks: readonly TestBlock[] = [];
+
+    act(() => {
+      hydratedBlocks = capturedEditor().onLoad(parse, rawHandler);
+    });
+
+    const hydratedContent = serialize(hydratedBlocks);
+    expect(hydratedContent).toContain('<strong>safe text</strong>');
+    expect(hydratedContent).toContain('unsafe link');
+    expect(hydratedContent).toContain(
+      '<a href="https://safe.example/path" rel="noopener noreferrer">safe link</a>',
+    );
+    expect(hydratedContent).not.toMatch(/javascript:|<script|unsafe element/iu);
+
+    act(() => {
+      capturedEditor().__experimentalOnInput(hydratedBlocks, {
+        isInitialContent: true,
+      });
+      capturedLoaded().onLoaded();
+    });
+
+    expect(onContentChange).not.toHaveBeenCalled();
+
+    const toHTMLString = vi.fn(() => '<strong>Spoofed content</strong>');
+    const spoofParser = vi.fn(() => [
+      testBlock('core/paragraph', {
+        content: { toHTMLString },
+      }),
+    ]);
+    let spoofedBlocks: readonly TestBlock[] = [];
+
+    act(() => {
+      spoofedBlocks = capturedEditor().onLoad(spoofParser, rawHandler);
+    });
+
+    expect(toHTMLString).not.toHaveBeenCalled();
+    expect(serialize(spoofedBlocks)).not.toContain('Spoofed content');
   });
 
   it('queues a first mutation through readiness and allows a later mutation with identical HTML', () => {

@@ -101,14 +101,14 @@
 
 ## PP-008 — Add Extension Integration and Package Audits
 
-- Status: not started
+- Status: completed
 - Priority: P1
 - Dependencies: PP-004, PP-005, PP-007
 - Spec or plan references: Test and Acceptance Plan; plan Commit 7
 - Acceptance criteria: Playwright launches an unpacked production build and covers options, worker, toolbar/panel, navigation, persistence, and root index where Chromium supports them; package audit rejects remote scripts, unsafe evaluation, missing resources, source maps, and credentials; CI runs all stable gates under Xvfb.
 - Suggested files: `e2e/`, `scripts/`, Playwright config, CI
 - Test expectations: Passing production audit and browser smoke suite with documented environment prerequisites
-- Notes: Quarantine no acceptance-critical behavior; provide a deterministic diagnostic when side-panel automation is unsupported.
+- Notes: Independently approved after corrective review. The production package now has four stable Chromium flows covering worker/options/unsupported states, a genuine restricted editor, supported-tab navigation, real Gutenberg local save, panel reload, same-profile browser restart, exact-origin root storage refresh, unrelated-origin exclusion, and exactly one credential-free canonical new tab. Profiles and the local HTTP fixture are rollback-safe and aggregate cleanup failures. The native toolbar-to-side-panel host remains one explicit capability skip because Playwright cannot drive Chrome extension chrome; the worker's real `sidePanel` behavior and packaged `default_path` are tested separately. The integration flow exposed and closed a real WordPress `RichTextData` hydration defect with aligned dependency pinning plus benign, adversarial, and spoof-object coverage.
 
 ## PP-009 — Complete Product and Release Documentation
 

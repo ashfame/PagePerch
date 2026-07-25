@@ -6,6 +6,7 @@ import '@automattic/isolated-block-editor/build-browser/core.css';
 import apiFetch from '@wordpress/api-fetch';
 // @ts-expect-error WordPress ships declarations without exposing them in its package metadata.
 import * as wordpressBlocks from '@wordpress/blocks';
+import { RichTextData } from '@wordpress/rich-text';
 
 import type { EditorMode } from '../domain/settings';
 import './PageNoteEditor.css';
@@ -167,6 +168,14 @@ function extractVisibleText(value: string): string {
     .trim();
 }
 
+function readRichTextValue(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  return value instanceof RichTextData ? value.toHTMLString() : undefined;
+}
+
 function extractSafeHref(tag: string): string | null {
   const match = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/iu.exec(
     tag,
@@ -241,9 +250,9 @@ function sanitizeRichText(value: string): string {
 
 function visibleSegments(block: BlockValue): string[] {
   const ownSegments = VISIBLE_ATTRIBUTE_KEYS.flatMap((key) => {
-    const value = block.attributes[key];
+    const value = readRichTextValue(block.attributes[key]);
 
-    if (typeof value !== 'string') {
+    if (value === undefined) {
       return [];
     }
 
@@ -278,9 +287,9 @@ function paragraphBlocksFromVisibleText(block: BlockValue): BlockValue[] {
 }
 
 function readRichContent(block: BlockValue, key = 'content'): string {
-  const value = block.attributes[key];
+  const value = readRichTextValue(block.attributes[key]);
 
-  if (typeof value !== 'string') {
+  if (value === undefined) {
     return '';
   }
 
