@@ -7,7 +7,10 @@ import {
   type SettingsRecordV1,
 } from '../domain/settings';
 import { IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY } from '../services/identityMigrationPersistence';
-import type { SettingsRepository } from './settingsRepository';
+import type {
+  SettingsConnectionCasResult,
+  SettingsRepository,
+} from './settingsRepository';
 import {
   enqueueStorageOperation,
   resolveChromeLocalStorageArea,
@@ -65,6 +68,18 @@ function isByosConnection(
       ...DEFAULT_SETTINGS_V1,
       byosConnection: value,
     })
+  );
+}
+
+function isSameConnectionIdentity(
+  left: ByosConnectionV1 | undefined,
+  right: ByosConnectionV1,
+): boolean {
+  return (
+    left !== undefined &&
+    left.accessToken === right.accessToken &&
+    left.expiresAt === right.expiresAt &&
+    left.connectedAt === right.connectedAt
   );
 }
 
@@ -274,6 +289,81 @@ export class ChromeLocalSettingsRepository implements SettingsRepository {
       );
 
       return cloneSettings(updated);
+    });
+  }
+
+  async updateLastSuccessfulSyncAtIfCurrent(
+    expectedConnection: ByosConnectionV1,
+    lastSuccessfulSyncAt: string,
+  ): Promise<SettingsConnectionCasResult> {
+    if (
+      !isByosConnection(expectedConnection) ||
+      expectedConnection === undefined ||
+      !isSettingsRecordV1({
+        ...DEFAULT_SETTINGS_V1,
+        byosConnection: {
+          ...expectedConnection,
+          lastSuccessfulSyncAt,
+        },
+      })
+    ) {
+      throw new RepositoryValidationError(
+        'put',
+        'Cannot store invalid PagePerch sync metadata.',
+      );
+    }
+
+    const expectedSnapshot = { ...expectedConnection };
+
+    return this.#enqueue(async () => {
+      const stored = await storageGet(
+        this.#storageArea,
+        [IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY, SETTINGS_STORAGE_KEY],
+        'put',
+      );
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          stored,
+          IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY,
+        )
+      ) {
+        throw new RepositoryPendingIdentityMigrationError('put');
+      }
+
+      const existingValue = stored[SETTINGS_STORAGE_KEY];
+
+      if (existingValue === undefined || !isSettingsRecordV1(existingValue)) {
+        if (existingValue !== undefined && !isSettingsRecordV0(existingValue)) {
+          throw invalidStoredSettings(existingValue);
+        }
+
+        return 'mismatch';
+      }
+
+      const currentConnection = existingValue.byosConnection;
+
+      if (
+        currentConnection === undefined ||
+        !isSameConnectionIdentity(currentConnection, expectedSnapshot)
+      ) {
+        return 'mismatch';
+      }
+
+      const updated: SettingsRecordV1 = {
+        ...existingValue,
+        byosConnection: {
+          ...currentConnection,
+          lastSuccessfulSyncAt,
+        },
+      };
+      await storageSet(
+        this.#storageArea,
+        { [SETTINGS_STORAGE_KEY]: updated },
+        'put',
+      );
+
+      return 'applied';
     });
   }
 

@@ -16,11 +16,15 @@ import {
 
 export type NoteClock = () => Date;
 export type NoteRevisionIdFactory = () => string;
+export type NoteLocalMutationObserver = (
+  record: Readonly<NoteRecordV1>,
+) => Promise<void> | void;
 
 export interface DefaultNoteServiceDependencies {
   readonly repository: NoteRepository;
   readonly clock?: NoteClock;
   readonly revisionIdFactory?: NoteRevisionIdFactory;
+  readonly onLocalMutation?: NoteLocalMutationObserver;
 }
 
 export class NoteServiceValidationError extends Error {
@@ -283,6 +287,7 @@ function defaultRevisionIdFactory(): string {
 export class DefaultNoteService implements NoteService {
   readonly #repository: NoteRepository;
   readonly #clock: NoteClock;
+  readonly #onLocalMutation: NoteLocalMutationObserver;
   readonly #revisionIdFactory: NoteRevisionIdFactory;
   readonly #pageMutations = new Map<string, Promise<void>>();
 
@@ -290,10 +295,12 @@ export class DefaultNoteService implements NoteService {
     repository,
     clock = () => new Date(),
     revisionIdFactory = defaultRevisionIdFactory,
+    onLocalMutation = () => undefined,
   }: DefaultNoteServiceDependencies) {
     this.#repository = repository;
     this.#clock = clock;
     this.#revisionIdFactory = revisionIdFactory;
+    this.#onLocalMutation = onLocalMutation;
   }
 
   async loadLive(pageKey: string): Promise<NoteRecordV1 | undefined> {
@@ -472,6 +479,12 @@ export class DefaultNoteService implements NoteService {
     }
 
     await this.#repository.put(record);
+
+    try {
+      await this.#onLocalMutation(Object.freeze(cloneRecord(record)));
+    } catch {
+      // Local persistence is authoritative; later triggers can recover a failed observer notification.
+    }
 
     return {
       status: 'saved',

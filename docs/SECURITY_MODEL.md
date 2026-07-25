@@ -25,7 +25,7 @@ PagePerch protects private note content, canonical URLs and titles, OAuth access
 
 ## Package Controls
 
-The production audit rejects `eval`, `new Function`, remote executable references, source maps, undeclared manifest resources, environment/config leaks, and obvious credential markers. Dependencies and lockfile changes receive review, and public distribution remains blocked until the isolated editor’s GPL-2.0-or-later implications are resolved.
+The production audit rejects `eval`, `new Function`, remote executable references, source maps, undeclared manifest resources, environment/config leaks, and obvious credential markers. Dependencies and lockfile changes receive review.
 
 ## Abuse and Failure Cases
 

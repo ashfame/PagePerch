@@ -22,10 +22,10 @@ Deliver validated exact-origin settings, collision-aware Gutenberg merge documen
 
 Status: in progress.
 
-Deliver public-client OAuth PKCE, state validation, early token expiry, one-time in-memory S3 credentials, injected AWS SDK path-style replica transport, deterministic reconciliation, tombstone propagation, durable coalescing retries, alarm/startup/panel/manual/save triggers, disconnect semantics, settings controls, and network-mocked tests.
+Deliver public-client OAuth PKCE, state validation, early token expiry, one-time in-memory S3 credentials, injected AWS SDK path-style replica transport, deterministic reconciliation, tombstone propagation, durable coalescing retries, automatic alarm/startup/panel/save/connection triggers, disconnect semantics, passive status, and network-mocked tests.
 
 ## M4 — Release Confidence
 
 Status: not started.
 
-Deliver unpacked-extension Playwright flows, production CSP/package audits, full failure-path coverage, CI parity, polished setup/privacy/permissions/license-status documentation, and a repeatable release checklist. Public distribution remains deferred until the project license is compatible with the editor dependency.
+Deliver unpacked-extension Playwright flows, production CSP/package audits, full failure-path coverage, CI parity, polished setup/privacy/permissions documentation, and a repeatable release checklist.

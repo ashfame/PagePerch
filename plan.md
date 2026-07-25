@@ -21,7 +21,6 @@
     versions. Isolated Block Editor repository (https://github.com/Automattic/isolated-block-editor)
 
   - Generate padded square 16, 32, 48, and 128-pixel icons from page_perch_logo.png and use the supplied logo in the side panel, options page, manifest, and README.
-  - Do not add a project LICENSE yet. Document that the editor dependency is GPL-2.0-or-later and that public distribution remains blocked pending a compatible project-license decision.
   - Add ESLint, Prettier, TypeScript checking, Vitest, React Testing Library, and Playwright. GitHub Actions will run install, format check, lint, typecheck, unit/component tests, production build, CSP audit, and extension smoke tests.
   - Keep generated Markdown—including plan.md, README.md, and workflow documentation—unwrapped, with each paragraph and list item on one source line.
 
@@ -65,7 +64,7 @@
 
   - Provide an editor-mode selector, a read-only list of built-in page identity exclusions, and an exact-origin rule editor with validation and duplicate prevention.
   - Provide storage status as either “Local only” or “Local + BYOS”; local storage cannot be disabled.
-  - Provide BYOS Connect, Disconnect, Retry, and Sync now controls with account-independent status, last successful sync time, pending-change count, token-expiry state, and actionable errors.
+  - Provide BYOS Connect and Disconnect controls with automatic synchronization, account-independent status, last successful sync time, per-page and aggregate pending-change state, token-expiry state, and actionable errors. Do not expose manual Sync now or remote Retry controls.
   - Disable BYOS connection with an explanatory message when the build lacks the non-secret VITE_BYOS_CLIENT_ID.
   - Disconnect by removing the OAuth token, PKCE state, pending in-memory S3 credentials, and connection metadata. Retain all local notes and leave remote BYOS objects untouched; reconnection performs a full reconciliation.
 
@@ -98,7 +97,7 @@
   - Request fresh S3 credentials whenever an operation begins without usable in-memory credentials. If the OAuth token has expired, retain pending writes and require reconnection.
   - Use AWS SDK v3 S3 primitives with endpoint https://byos.ashfame.com, region us-east-1, Signature V4, forcePathStyle: true, and the bucket alias returned by BYOS.
   - Store one deterministic JSON object per record at pageperch/v1/notes/{pageKey}.json; logical deletions overwrite the same object with a tombstone instead of issuing S3 DELETE.
-  - On initial connection, panel opening, extension startup, manual sync, periodic alarm, and successful local save, list/reconcile remote records and apply newest-savedAt wins in both directions. Populate the local cache from newer BYOS
+  - On initial connection, panel opening, extension startup, periodic alarm, and successful local save, list/reconcile remote records and apply newest-savedAt wins in both directions. Populate the local cache from newer BYOS
     records and upload newer local records.
 
   - A save succeeds for the user once local persistence completes. BYOS failures place the page key in a deduplicated durable queue and retry on the next sync opportunity with bounded exponential backoff.
@@ -132,8 +131,7 @@
   - Commit 5: feat: add identity settings and note migrations — add exact-origin settings, collision merging, tombstone migrations, validation, and migration tests.
   - Commit 6: feat: add byos authentication and synchronization — add PKCE OAuth, temporary S3 credentials, remote repository, reconciliation, retry queue, settings controls, and transport tests.
   - Commit 7: test: add extension integration coverage — add unpacked-extension Playwright flows, CSP/package audits, and failure-path coverage.
-  - Commit 8: docs: document pageperch setup and privacy — add README.md covering installation, unpacked development, BYOS registration/build configuration, storage semantics, page identity, permissions, privacy, known limitations, license
-    status, and release checks.
+  - Commit 8: docs: document pageperch setup and privacy — add README.md covering installation, unpacked development, BYOS registration/build configuration, storage semantics, page identity, permissions, privacy, known limitations, and release checks.
 
   - Before every commit, run all checks available at that stage; from the scaffold commit onward this means formatting check, lint, typecheck, tests, and production build. Inspect the staged diff to keep each commit focused and never commit
     secrets or generated caches.
@@ -146,5 +144,3 @@
   - GitHub authentication, private Git repositories, isomorphic-git, multiple selectable repositories, and “ALL” storage are removed from this implementation.
   - BYOS is the only remote provider exposed in settings, while its S3 repository remains transport-configurable for future providers.
   - The BYOS client ID is public build configuration and will not be treated as a secret; CI builds without it and verifies the disabled-state UX.
-  - No Chrome Web Store publication or public binary distribution occurs until the project adopts a license compatible with the GPL-2.0-or-later editor dependency.
-

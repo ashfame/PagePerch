@@ -14,6 +14,7 @@ import {
   DefaultNoteService,
   normalizeGutenbergContent,
   NoteServiceValidationError,
+  type NoteLocalMutationObserver,
 } from './note';
 
 const SAVED_AT = '2026-07-25T10:00:00.000Z';
@@ -168,6 +169,7 @@ class MemoryNoteRepository implements NoteRepository {
 function createService(
   repository: NoteRepository,
   options: {
+    readonly onLocalMutation?: NoteLocalMutationObserver;
     readonly savedAt?: string;
     readonly revisionId?: string;
   } = {},
@@ -183,6 +185,7 @@ function createService(
     service: new DefaultNoteService({
       repository,
       clock,
+      onLocalMutation: options.onLocalMutation,
       revisionIdFactory,
     }),
     clock,
@@ -258,6 +261,57 @@ describe('DefaultNoteService mutations', () => {
     ]);
     expect(clock).toHaveBeenCalledOnce();
     expect(revisionIdFactory).toHaveBeenCalledOnce();
+  });
+
+  it('runs the local-mutation observer after durable persistence inside same-page sequencing', async () => {
+    const identity = await identify('https://example.com/observer-order');
+    const repository = new MemoryNoteRepository();
+    let releaseObserver = (): void => undefined;
+    const observerGate = new Promise<void>((resolve) => {
+      releaseObserver = resolve;
+    });
+    const observer = vi.fn(async (current: Readonly<NoteRecordV1>) => {
+      expect(repository.records.get(current.pageKey)).toEqual(current);
+      await observerGate;
+    });
+    const { service } = createService(repository, {
+      onLocalMutation: observer,
+    });
+
+    const save = service.saveDraft(draftInput(identity));
+    await vi.waitFor(() => {
+      expect(observer).toHaveBeenCalledOnce();
+    });
+    const clear = service.clearPage(pageInput(identity));
+    await Promise.resolve();
+    expect(repository.getCalls).toEqual([identity.pageKey]);
+
+    releaseObserver();
+    await expect(save).resolves.toMatchObject({ status: 'saved' });
+    await expect(clear).resolves.toMatchObject({
+      status: 'saved',
+      change: 'deleted',
+    });
+    expect(observer).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps a durable save successful when its observer fails and never observes unchanged saves', async () => {
+    const identity = await identify('https://example.com/observer-failure');
+    const repository = new MemoryNoteRepository();
+    const observer = vi.fn<NoteLocalMutationObserver>(() => {
+      throw new Error('worker messaging failed');
+    });
+    const { service } = createService(repository, {
+      onLocalMutation: observer,
+    });
+
+    const saved = await service.saveDraft(draftInput(identity));
+    const unchanged = await service.saveDraft(draftInput(identity));
+
+    expect(saved).toMatchObject({ status: 'saved', change: 'created' });
+    expect(unchanged).toMatchObject({ status: 'unchanged' });
+    expect(observer).toHaveBeenCalledOnce();
+    expect(Object.isFrozen(observer.mock.calls[0]?.[0])).toBe(true);
   });
 
   it.each([

@@ -21,6 +21,7 @@ export interface ByosClientConfig {
 export interface ByosClient {
   readonly config: ByosClientConfig;
   readonly coordinator: ByosCoordinator;
+  invalidateProtocolCredentials(): void;
 }
 
 export function readByosClientConfig(
@@ -102,5 +103,11 @@ export function createByosClient(
     resumePendingMigration: recoverPendingIdentityMigration,
   });
 
-  return Object.freeze({ config, coordinator });
+  return Object.freeze({
+    config,
+    coordinator,
+    invalidateProtocolCredentials: () => {
+      credentials.clear();
+    },
+  });
 }

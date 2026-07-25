@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  createByosClient,
   ChromeByosIdentityConnector,
   FetchByosHttpConnector,
   readByosClientConfig,
 } from './byosClient';
+import { SETTINGS_STORAGE_KEY } from '../repositories/chromeLocalSettingsRepository';
+import { InMemoryChromeStorage } from '../../test/inMemoryChromeStorage';
 
 describe('BYOS production client connectors', () => {
   it.each([
@@ -74,5 +77,64 @@ describe('BYOS production client connectors', () => {
         credentials: 'omit',
       },
     );
+  });
+
+  it('exposes narrow invalidation for its own in-memory protocol credential cache', async () => {
+    const local = new InMemoryChromeStorage({
+      [SETTINGS_STORAGE_KEY]: {
+        schemaVersion: 1,
+        editorMode: 'text-focused-blocks',
+        pageIdentityExclusions: [],
+        byosConnection: {
+          accessToken: 'oauth-access-token',
+          connectedAt: '2026-07-25T12:00:00.000Z',
+          expiresAt: '2099-07-25T13:00:00.000Z',
+        },
+      },
+    });
+    vi.stubGlobal('chrome', {
+      identity: {
+        getRedirectURL: vi.fn(),
+        launchWebAuthFlow: vi.fn(),
+      },
+      storage: {
+        local,
+        session: new InMemoryChromeStorage(),
+      },
+    });
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            credential: {
+              id: 'credential-1',
+              protocol: 's3',
+              access_key_id: 'temporary-access-key',
+              expires_at: '2099-07-25T13:00:00.000Z',
+            },
+            grant: {
+              protocol: 's3',
+              protocol_credential_id: 'credential-1',
+              external_alias: 'issued-bucket-alias',
+              expires_at: '2099-07-25T12:45:00.000Z',
+            },
+            access_key_id: 'temporary-access-key',
+            secret: 'temporary-secret',
+          }),
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const client = createByosClient({
+      VITE_BYOS_CLIENT_ID: 'public-client',
+    });
+
+    await client.coordinator.getProtocolCredentials();
+    await client.coordinator.getProtocolCredentials();
+    expect(fetchMock).toHaveBeenCalledOnce();
+
+    client.invalidateProtocolCredentials();
+    await client.coordinator.getProtocolCredentials();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

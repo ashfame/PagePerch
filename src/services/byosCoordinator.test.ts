@@ -497,4 +497,39 @@ describe('ByosCoordinator', () => {
     );
     expect(valid.credentials.get).toHaveBeenCalledWith('oauth-access-token');
   });
+
+  it('clears credentials when an expected connection changes during issuance', async () => {
+    const original = connection();
+    const replacement = connection({
+      accessToken: 'oauth-access-token-replacement',
+      connectedAt: '2026-07-25T12:05:00.000Z',
+      expiresAt: '2026-07-25T14:00:00.000Z',
+    });
+    let releaseCredentials:
+      ((credentials: ByosProtocolCredentials) => void) | undefined;
+    const issued = new Promise<ByosProtocolCredentials>((resolve) => {
+      releaseCredentials = resolve;
+    });
+    const credentials = {
+      get: vi.fn(() => issued),
+      clear: vi.fn(),
+    };
+    const test = coordinatorHarness(
+      { credentials },
+      settings({ byosConnection: original }),
+    );
+
+    const acquiring = test.coordinator.getProtocolCredentials(original);
+    await vi.waitFor(() => {
+      expect(credentials.get).toHaveBeenCalledWith(original.accessToken);
+    });
+    await test.settingsPort.updateByosConnection(replacement);
+    releaseCredentials?.(protocolCredentials());
+
+    await expect(acquiring).rejects.toMatchObject({
+      name: 'ByosError',
+      code: 'reconnect-required',
+    });
+    expect(credentials.clear).toHaveBeenCalledOnce();
+  });
 });

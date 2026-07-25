@@ -54,6 +54,8 @@ interface Harness {
   readonly connect: ReturnType<typeof vi.fn<() => Promise<void>>>;
   readonly disconnect: ReturnType<typeof vi.fn<() => Promise<void>>>;
   readonly get: ReturnType<typeof vi.fn<() => Promise<SettingsRecordV1>>>;
+  readonly invalidateCredentials: ReturnType<typeof vi.fn<() => Promise<void>>>;
+  readonly request: ReturnType<typeof vi.fn>;
   readonly updateEditorMode: ReturnType<
     typeof vi.fn<(editorMode: EditorMode) => Promise<SettingsRecordV1>>
   >;
@@ -102,6 +104,18 @@ function harness(
     return Promise.resolve();
   });
   const clock = vi.fn(() => new Date(NOW));
+  const request = vi.fn(() =>
+    Promise.resolve({
+      status: 'synced' as const,
+      uploaded: 0,
+      downloaded: 0,
+      unchanged: 0,
+      conflicts: 0,
+      failed: 0,
+      pending: 0,
+    }),
+  );
+  const invalidateCredentials = vi.fn(() => Promise.resolve());
   const clientId = options.clientId ?? 'client-public';
 
   return {
@@ -120,9 +134,12 @@ function harness(
       },
       migration: { start },
       settings: { get, updateEditorMode },
+      syncMessages: { invalidateCredentials, request },
     },
     disconnect,
     get,
+    invalidateCredentials,
+    request,
     updateEditorMode,
     start,
   };
@@ -343,11 +360,11 @@ describe('OptionsApp', () => {
       screen.getByText('Local storage is always on and cannot be disabled.'),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Connect BYOS' })).toBeEnabled();
-    expect(screen.getByText('Pending changes')).toBeInTheDocument();
+    expect(screen.queryByText('Pending changes')).toBeNull();
     expect(
-      screen.getByText('Unavailable — the sync engine is not yet configured.'),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Sync now' })).toBeDisabled();
+      screen.queryByText(/sync engine is not yet configured/iu),
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
   });
 
   it('disables connection with exact missing-client guidance and no client calls', async () => {
@@ -427,12 +444,16 @@ describe('OptionsApp', () => {
       ],
     });
     const testHarness = harness(initial);
+    testHarness.request.mockRejectedValueOnce(
+      new Error('service worker unavailable'),
+    );
     await renderReady(testHarness);
 
     await user.click(screen.getByRole('button', { name: 'Connect BYOS' }));
 
     expect(await screen.findByText('Connected')).toBeInTheDocument();
     expect(testHarness.connect).toHaveBeenCalledOnce();
+    expect(testHarness.request).toHaveBeenCalledWith('connection');
     expect(testHarness.get).toHaveBeenCalledTimes(2);
     expect(testHarness.current()).toEqual({
       ...initial,
@@ -597,11 +618,15 @@ describe('OptionsApp', () => {
       byosConnection: connection(),
     });
     const testHarness = harness(initial);
+    testHarness.invalidateCredentials.mockRejectedValueOnce(
+      new Error('service worker unavailable'),
+    );
     await renderReady(testHarness);
 
     await user.click(screen.getByRole('button', { name: 'Disconnect BYOS' }));
 
     expect(await screen.findByText('Not connected')).toBeInTheDocument();
+    expect(testHarness.invalidateCredentials).toHaveBeenCalledOnce();
     expect(testHarness.disconnect).toHaveBeenCalledOnce();
     expect(testHarness.get).toHaveBeenCalledTimes(2);
     expect(testHarness.current()).toEqual({
@@ -609,6 +634,27 @@ describe('OptionsApp', () => {
       editorMode: 'paragraphs-only',
       pageIdentityExclusions: initial.pageIdentityExclusions,
     });
+  });
+
+  it('waits for best-effort worker invalidation before clearing the local connection', async () => {
+    const user = userEvent.setup();
+    let releaseInvalidation = (): void => undefined;
+    const invalidation = new Promise<void>((resolve) => {
+      releaseInvalidation = resolve;
+    });
+    const testHarness = harness(settings({ byosConnection: connection() }));
+    testHarness.invalidateCredentials.mockReturnValueOnce(invalidation);
+    await renderReady(testHarness);
+
+    await user.click(screen.getByRole('button', { name: 'Disconnect BYOS' }));
+    expect(testHarness.invalidateCredentials).toHaveBeenCalledOnce();
+    expect(testHarness.disconnect).not.toHaveBeenCalled();
+
+    releaseInvalidation();
+    await waitFor(() => {
+      expect(testHarness.disconnect).toHaveBeenCalledOnce();
+    });
+    expect(await screen.findByText('Not connected')).toBeInTheDocument();
   });
 
   it('retains refreshed connected state after disconnect failure and retries', async () => {
@@ -786,6 +832,9 @@ describe('OptionsApp', () => {
         ],
       }),
     );
+    testHarness.request.mockRejectedValueOnce(
+      new Error('service worker unavailable'),
+    );
     await renderReady(testHarness);
 
     await user.click(
@@ -804,6 +853,7 @@ describe('OptionsApp', () => {
       await screen.findByText('No custom exclusions.'),
     ).toBeInTheDocument();
     expect(testHarness.get).toHaveBeenCalledTimes(2);
+    expect(testHarness.request).toHaveBeenCalledWith('identity-migration');
   });
 
   it('rejects invalid origins, built-ins, and duplicates before executor calls while retaining inputs', async () => {

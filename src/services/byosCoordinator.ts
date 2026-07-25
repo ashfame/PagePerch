@@ -35,6 +35,18 @@ export interface ByosCoordinatorDependencies {
   readonly resumePendingMigration: () => Promise<unknown>;
 }
 
+function isSameConnectionIdentity(
+  connection: ByosConnectionV1 | undefined,
+  expected: ByosConnectionV1,
+): boolean {
+  return (
+    connection !== undefined &&
+    connection.accessToken === expected.accessToken &&
+    connection.connectedAt === expected.connectedAt &&
+    connection.expiresAt === expected.expiresAt
+  );
+}
+
 export class ByosCoordinator {
   readonly #dependencies: ByosCoordinatorDependencies;
   #connectInFlight: Promise<void> | undefined;
@@ -88,7 +100,9 @@ export class ByosCoordinator {
     }
   }
 
-  async getProtocolCredentials(): Promise<ByosProtocolCredentials> {
+  async getProtocolCredentials(
+    expectedConnection?: ByosConnectionV1,
+  ): Promise<ByosProtocolCredentials> {
     const clientId = this.#dependencies.clientId?.trim();
 
     if (clientId === undefined || clientId === '') {
@@ -117,6 +131,8 @@ export class ByosCoordinator {
 
     if (
       connection === undefined ||
+      (expectedConnection !== undefined &&
+        !isSameConnectionIdentity(connection, expectedConnection)) ||
       !(now instanceof Date) ||
       Number.isNaN(now.valueOf()) ||
       new Date(connection.expiresAt).valueOf() <= now.valueOf()
@@ -128,7 +144,38 @@ export class ByosCoordinator {
     }
 
     try {
-      return await this.#dependencies.credentials.get(connection.accessToken);
+      const credentials = await this.#dependencies.credentials.get(
+        connection.accessToken,
+      );
+
+      if (expectedConnection !== undefined) {
+        let latestSettings;
+
+        try {
+          latestSettings = await this.#dependencies.settings.get();
+        } catch {
+          this.#dependencies.credentials.clear();
+          throw byosError(
+            'reconnect-required',
+            'Reconnect BYOS before using remote storage.',
+          );
+        }
+
+        if (
+          !isSameConnectionIdentity(
+            latestSettings.byosConnection,
+            expectedConnection,
+          )
+        ) {
+          this.#dependencies.credentials.clear();
+          throw byosError(
+            'reconnect-required',
+            'Reconnect BYOS before using remote storage.',
+          );
+        }
+      }
+
+      return credentials;
     } catch (error) {
       if (error instanceof ByosError) {
         throw error;

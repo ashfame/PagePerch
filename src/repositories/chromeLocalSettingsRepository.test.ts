@@ -289,6 +289,107 @@ describe('ChromeLocalSettingsRepository', () => {
     expect(storage.snapshot()).toEqual({ [SETTINGS_STORAGE_KEY]: current });
   });
 
+  it('atomically updates last-success metadata only for the same OAuth connection identity', async () => {
+    const connection: ByosConnectionV1 = {
+      accessToken: 'oauth-token',
+      expiresAt: '2026-08-01T11:59:00Z',
+      connectedAt: '2026-07-25T10:00:00Z',
+    };
+    const current = settings({
+      editorMode: 'paragraphs-only',
+      pageIdentityExclusions: [
+        { origin: 'https://example.com', parameterNames: ['session'] },
+      ],
+      byosConnection: connection,
+    });
+    const storage = new InMemoryChromeStorage({
+      [SETTINGS_STORAGE_KEY]: current,
+    });
+    const repository = new ChromeLocalSettingsRepository(storage);
+
+    await expect(
+      repository.updateLastSuccessfulSyncAtIfCurrent(
+        connection,
+        '2026-07-25T12:00:00Z',
+      ),
+    ).resolves.toBe('applied');
+    expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toEqual({
+      ...current,
+      byosConnection: {
+        ...connection,
+        lastSuccessfulSyncAt: '2026-07-25T12:00:00Z',
+      },
+    });
+
+    await expect(
+      repository.updateLastSuccessfulSyncAtIfCurrent(
+        { ...connection, lastSuccessfulSyncAt: '2026-07-25T11:00:00Z' },
+        '2026-07-25T12:01:00Z',
+      ),
+    ).resolves.toBe('applied');
+  });
+
+  it('does not resurrect or alter sync metadata across disconnect and reconnect races', async () => {
+    const original: ByosConnectionV1 = {
+      accessToken: 'oauth-token-old',
+      expiresAt: '2026-08-01T11:59:00Z',
+      connectedAt: '2026-07-25T10:00:00Z',
+    };
+    const replacement: ByosConnectionV1 = {
+      accessToken: 'oauth-token-new',
+      expiresAt: '2026-08-02T11:59:00Z',
+      connectedAt: '2026-07-25T11:00:00Z',
+    };
+    const storage = new InMemoryChromeStorage();
+    const repository = new ChromeLocalSettingsRepository(storage);
+    await repository.updateByosConnection(original);
+    await repository.updateByosConnection(undefined);
+
+    await expect(
+      repository.updateLastSuccessfulSyncAtIfCurrent(
+        original,
+        '2026-07-25T12:00:00Z',
+      ),
+    ).resolves.toBe('mismatch');
+    expect(
+      (storage.snapshot()[SETTINGS_STORAGE_KEY] as SettingsRecordV1)
+        .byosConnection,
+    ).toBeUndefined();
+
+    await repository.updateByosConnection(replacement);
+    await expect(
+      repository.updateLastSuccessfulSyncAtIfCurrent(
+        original,
+        '2026-07-25T12:01:00Z',
+      ),
+    ).resolves.toBe('mismatch');
+    expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toEqual(
+      settings({ byosConnection: replacement }),
+    );
+  });
+
+  it('rejects invalid sync metadata before storage access', async () => {
+    const storage = new InMemoryChromeStorage();
+    const repository = new ChromeLocalSettingsRepository(storage);
+    const connection: ByosConnectionV1 = {
+      accessToken: 'oauth-token',
+      expiresAt: '2026-08-01T11:59:00Z',
+      connectedAt: '2026-07-25T10:00:00Z',
+    };
+
+    await expect(
+      repository.updateLastSuccessfulSyncAtIfCurrent(
+        { ...connection, accessToken: '' },
+        '2026-07-25T12:00:00Z',
+      ),
+    ).rejects.toBeInstanceOf(RepositoryValidationError);
+    await expect(
+      repository.updateLastSuccessfulSyncAtIfCurrent(connection, 'not-a-time'),
+    ).rejects.toBeInstanceOf(RepositoryValidationError);
+    expect(storage.getCalls).toEqual([]);
+    expect(storage.setCalls).toEqual([]);
+  });
+
   it.each([
     ['absent defaults', undefined],
     ['understood v0', { schemaVersion: 0, editorMode: 'paragraphs-only' }],
@@ -381,6 +482,16 @@ describe('ChromeLocalSettingsRepository', () => {
         connectedAt: '2026-07-25T10:00:00Z',
       }),
     ).rejects.toBeInstanceOf(RepositoryStoredDataError);
+    await expect(
+      repository.updateLastSuccessfulSyncAtIfCurrent(
+        {
+          accessToken: 'oauth-token',
+          expiresAt: '2026-08-01T11:59:00Z',
+          connectedAt: '2026-07-25T10:00:00Z',
+        },
+        '2026-07-25T12:00:00Z',
+      ),
+    ).rejects.toBeInstanceOf(RepositoryStoredDataError);
     expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toEqual(future);
     expect(storage.setCalls).toEqual([]);
   });
@@ -424,6 +535,20 @@ describe('ChromeLocalSettingsRepository', () => {
           expiresAt: '2026-08-01T11:59:00Z',
           connectedAt: '2026-07-25T10:00:00Z',
         }),
+      ).rejects.toMatchObject({
+        name: 'RepositoryPendingIdentityMigrationError',
+        code: 'pending-identity-migration',
+        operation: 'put',
+      });
+      await expect(
+        repository.updateLastSuccessfulSyncAtIfCurrent(
+          {
+            accessToken: 'oauth-token',
+            expiresAt: '2026-08-01T11:59:00Z',
+            connectedAt: '2026-07-25T10:00:00Z',
+          },
+          '2026-07-25T12:00:00Z',
+        ),
       ).rejects.toMatchObject({
         name: 'RepositoryPendingIdentityMigrationError',
         code: 'pending-identity-migration',

@@ -7,6 +7,11 @@ import {
 } from 'react';
 
 import type { ByosClientConfig } from '../background/byosClient';
+import {
+  requestSyncCredentialInvalidation,
+  requestSyncFollowUp,
+  type SyncRuntimeMessagePort,
+} from '../background/syncRuntimeMessages';
 import type { BuiltInPageIdentityExclusions } from '../domain/pageIdentity';
 import type { EditorMode, SettingsRecordV1 } from '../domain/settings';
 import type { SettingsRepository } from '../repositories/settingsRepository';
@@ -37,6 +42,10 @@ export interface OptionsAppDependencies {
   readonly byos: OptionsByosDependencies;
   readonly migration: MigrationPort;
   readonly settings: SettingsPort;
+  readonly syncMessages?: Pick<
+    SyncRuntimeMessagePort,
+    'invalidateCredentials' | 'request'
+  >;
 }
 
 export interface OptionsAppProps {
@@ -310,6 +319,12 @@ export function OptionsApp({ dependencies }: OptionsAppProps) {
 
     try {
       await dependencies.migration.start(requestedSettings);
+      if (dependencies.syncMessages !== undefined) {
+        void requestSyncFollowUp(
+          dependencies.syncMessages,
+          'identity-migration',
+        );
+      }
       const refreshed = await dependencies.settings.get();
       setView({ status: 'ready', settings: refreshed });
 
@@ -396,7 +411,15 @@ export function OptionsApp({ dependencies }: OptionsAppProps) {
     let actionFailure: ByosFailure | undefined;
 
     try {
+      if (action === 'disconnect' && dependencies.syncMessages !== undefined) {
+        await requestSyncCredentialInvalidation(dependencies.syncMessages);
+      }
+
       await dependencies.byos.connection[action]();
+
+      if (action === 'connect' && dependencies.syncMessages !== undefined) {
+        void requestSyncFollowUp(dependencies.syncMessages, 'connection');
+      }
     } catch (error) {
       actionFailure = {
         message: byosActionFailure(action, error),
@@ -811,22 +834,6 @@ export function OptionsApp({ dependencies }: OptionsAppProps) {
                 </button>
               </div>
             )}
-
-            <div className="sync-boundary">
-              <dl className="byos-details">
-                <div>
-                  <dt>Pending changes</dt>
-                  <dd>Unavailable — the sync engine is not yet configured.</dd>
-                </div>
-              </dl>
-              <p>
-                Sync now will become available when the PagePerch sync engine is
-                configured.
-              </p>
-              <button type="button" disabled>
-                Sync now
-              </button>
-            </div>
           </section>
 
           <div className="options-notice" aria-live="polite">

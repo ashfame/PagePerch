@@ -1,8 +1,14 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { readByosClientConfig } from '../background/byosClient';
+import {
+  requestSyncFollowUp,
+  SyncRuntimeMessagePort,
+} from '../background/syncRuntimeMessages';
 import { ChromeLocalNoteRepository } from '../repositories/chromeLocalNoteRepository';
 import { ChromeLocalSettingsRepository } from '../repositories/chromeLocalSettingsRepository';
+import { ChromeLocalSyncQueue } from '../repositories/chromeLocalSyncQueue';
 import { DefaultNoteService } from '../services/note';
 import { DefaultPageIdentityService } from '../services/pageIdentity';
 import { SidePanelApp, type CreateActivePageSessionController } from './App';
@@ -22,6 +28,7 @@ import {
 } from './pageNoteOwnership';
 import { DefaultRootRecentNotesIndex } from './rootRecentNotes';
 import { SettingsPageIdentityExclusions } from './settingsPageIdentityExclusions';
+import { createLocalMutationSyncObserver } from './localMutationSync';
 
 const rootElement = document.querySelector('#root');
 
@@ -32,7 +39,21 @@ if (!(rootElement instanceof HTMLElement)) {
 const tabs = new ChromeActivePageTabs();
 const settingsRepository = new ChromeLocalSettingsRepository();
 const noteRepository = new ChromeLocalNoteRepository();
-const noteService = new DefaultNoteService({ repository: noteRepository });
+const syncClock = () => new Date();
+const syncMessages = new SyncRuntimeMessagePort();
+const syncQueue = new ChromeLocalSyncQueue({
+  clock: syncClock,
+  random: Math.random,
+});
+const noteService = new DefaultNoteService({
+  repository: noteRepository,
+  onLocalMutation: createLocalMutationSyncObserver({
+    config: readByosClientConfig(),
+    settings: settingsRepository,
+    queue: syncQueue,
+    messages: syncMessages,
+  }),
+});
 const pageOpener = new ChromeCanonicalPageOpener();
 const recentNotesIndex = new DefaultRootRecentNotesIndex(
   noteService,
@@ -65,6 +86,8 @@ const createController: CreateActivePageSessionController = (emitState) =>
     flushPendingSave: () => pendingPageSave.flushPendingSave(),
     emitState,
   });
+
+void requestSyncFollowUp(syncMessages, 'panel-open');
 
 createRoot(rootElement).render(
   <StrictMode>

@@ -32,13 +32,13 @@
 - Consequences: Stale devices cannot resurrect deleted notes, while storage grows with deleted identities.
 - Follow-up tasks: Preserve tombstones in listings used for synchronization but hide them from user-visible indexes.
 
-## 2026-07-25 — Defer Public Distribution Until License Decision
+## 2026-07-25 — Defer Public Distribution Until License Decision (Superseded for Current Scope)
 
 - Decision: Do not add a project license or publish a binary while `@automattic/isolated-block-editor` imposes GPL-2.0-or-later compatibility requirements that the project has not adopted.
 - Context: The editor dependency is required by the plan and the project license is undecided.
 - Options considered: Adopt a compatible license now; replace the editor; keep distribution private and defer.
-- Consequences: Development and private testing may proceed, but release documentation must state the distribution blocker.
-- Follow-up tasks: Complete a formal dependency/license review before Chrome Web Store submission.
+- Consequences: This was the original plan interpretation. The user later directed PagePerch implementation, documentation, readiness, and manual testing to ignore licensing, so it is not a current backlog item or release gate.
+- Follow-up tasks: None in the current scope.
 
 ## 2026-07-25 — Preserve the Pinned Editor with Audited MV3 Compatibility
 
@@ -50,11 +50,11 @@
 
 ## 2026-07-25 — Accept Documented Pinned-Editor Dependency Risk for Private Development
 
-- Decision: Continue private implementation with the locked editor graph while treating 60 moderate production advisories, the stale React peer range, and the unresolved GPL compatibility decision as release risks; do not apply npm’s incompatible forced downgrade.
+- Decision: Continue implementation with the locked editor graph while treating 60 moderate production advisories and the stale React peer range as dependency risks; do not apply npm’s incompatible forced downgrade.
 - Context: The advisories propagate from three underlying Babel runtime RegExp-complexity, Showdown link-parsing ReDoS, and UUID buffer-handling issues. No non-breaking root remediation is available for the mandated editor version, and the audited bundle contains no remote code or forbidden evaluation.
 - Options considered: Abandon the required editor; force npm’s proposed downgrade; ignore the findings; lock, audit, document, and reassess before distribution.
-- Consequences: Local/private product work can continue with deterministic artifacts, but release readiness cannot claim a clean dependency audit and public distribution remains blocked.
-- Follow-up tasks: Reassess available editor/package updates during PP-010, test user-controlled content paths affected by Showdown, and document the final dependency review in release materials.
+- Consequences: Product work can continue with deterministic audited artifacts, but release readiness cannot claim a clean dependency audit.
+- Follow-up tasks: Reassess available editor/package updates during PP-010 and test user-controlled content paths affected by Showdown.
 
 ## 2026-07-25 — Serialize Chrome Storage Index Mutations Across Extension Contexts
 
@@ -110,4 +110,12 @@
 - Context: Local saves define product success and must remain durable through suspension and remote failure, while an upload or download already in flight must not clear or overwrite a newer user save. Revision IDs alone are not an atomic equality guarantee because the repository accepts any valid externally supplied record.
 - Options considered: Persist full record snapshots in the queue; rely on last writer wins; compare only revision IDs; use minimal intent plus queue revision CAS and local complete-record CAS under the shared storage lock.
 - Consequences: Repeated saves coalesce without duplicating note content, stale completion cannot remove newer intent, a remote hydration cannot overwrite even a same-revision divergent concurrent save, queue-only orphans can be removed safely, and worker restart reconstructs bounded retry state. A failed queue write does not invalidate an already durable local save; later full reconciliation repairs missing intent.
-- Follow-up tasks: Compose queue insertion and every required trigger in PP-007C, surface pending/error status, and retain race tests whenever note or queue persistence changes.
+- Follow-up tasks: Surface passive pending/error status in PP-007C2 and retain race tests whenever note or queue persistence changes.
+
+## 2026-07-25 — Use Automatic Sync with the Durable Queue as the Per-Page Flag
+
+- Decision: Keep one queue entry containing page key and current revision as the only per-page unsynced marker; trigger reconciliation automatically after durable local mutation, connection, identity migration, panel opening, worker boot/install/startup, periodic alarm, and one-shot retry alarm; expose no manual Sync now or remote Retry control.
+- Context: The user wants page visits and ordinary extension lifecycle events to recover pending work without making synchronization a manual workflow. A second boolean inside the note record would duplicate queue state and could drift from the revision it describes.
+- Options considered: Add an `isSynced` boolean to every note; expose manual synchronization controls; keep revision-specific durable queue intent and automatic background reconciliation.
+- Consequences: Local save success remains independent of BYOS, an expired connected token still leaves the exact revision pending, deliberate local-only/disconnected editing creates no unnecessary queue, and reconnection performs a full reconciliation. The MV3 service worker owns temporary credentials, alarms, serialization, connection generations, and redacted outcomes while Chrome may suspend it at any time. Disconnect invalidates worker credentials before clearing local connection state, and whole-run failures advance due revisions through bounded CAS backoff.
+- Follow-up tasks: Add passive per-page and aggregate queue visibility, packaged lifecycle coverage, and manual BYOS verification with an approved client.

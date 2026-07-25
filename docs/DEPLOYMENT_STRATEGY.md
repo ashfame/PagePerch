@@ -6,4 +6,4 @@ CI runs on the pinned Node.js 24.18.0 toolchain, verifies formatting/lint/types/
 
 Development builds may use a transient extension ID. Production OAuth requires an approved BYOS app registration whose redirect allowlist contains the stable `chrome.identity.getRedirectURL()` value for the final published extension ID.
 
-No Chrome Web Store upload or public binary distribution is part of v1 implementation readiness. Publication remains blocked until a compatible project license is adopted and the dependency/license review is complete.
+Chrome Web Store publication is outside the current implementation and manual-testing scope.
