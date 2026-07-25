@@ -14,13 +14,13 @@ Deliver canonical page identity, built-in and custom exclusion matching, version
 
 ## M2 — Identity Migration
 
-Status: in progress.
+Status: completed.
 
 Deliver validated exact-origin settings, collision-aware Gutenberg merge documents, deterministic oldest-to-newest ordering, old-key tombstones, idempotent repeated migration, representative-URL moves on exclusion removal, and migration-focused tests.
 
 ## M3 — BYOS Synchronization
 
-Status: not started.
+Status: in progress.
 
 Deliver public-client OAuth PKCE, state validation, early token expiry, one-time in-memory S3 credentials, injected AWS SDK path-style replica transport, deterministic reconciliation, tombstone propagation, durable coalescing retries, alarm/startup/panel/manual/save triggers, disconnect semantics, settings controls, and network-mocked tests.
 

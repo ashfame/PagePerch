@@ -68,18 +68,18 @@
 
 ## PP-005 — Add Identity Settings and Migrations
 
-- Status: in progress
+- Status: completed
 - Priority: P0
 - Dependencies: PP-003B, PP-004
 - Spec or plan references: Settings page; canonical identity migration requirements
 - Acceptance criteria: Exact-origin/name validation and duplicate prevention work; adding exclusions recalculates identities, merges collisions in deterministic Gutenberg documents, and tombstones former keys; removal moves combined notes without attempted splitting; repeated migration is idempotent.
 - Suggested files: `src/options/`, `src/services/identity-migration*`, repositories, tests
 - Test expectations: Settings component tests and migration unit/integration tests
-- Notes: PP-005A1 and PP-005A2 are independently approved. The pure planner handles exactly one normalized exact-origin addition/removal, stacks collision content below escaped original-URL headings in deterministic oldest-first order, preserves a representative URL for later removal, and emits immutable destination/tombstone records. The durable executor verifies semantic provenance and the complete exact-origin inventory, applies destination then tombstone then settings phases behind one shared storage lock, resumes all four journal phases on service-worker startup, and blocks conflicting note/settings writes until finalization. The options UI remains.
+- Notes: Accepted after independent corrective review. The pure planner handles exactly one normalized exact-origin addition/removal, stacks collision content below escaped original-URL headings in deterministic oldest-first order, preserves a representative URL for later removal, and emits immutable destination/tombstone records. The durable executor verifies provenance and the complete exact-origin inventory, applies destination then tombstone then settings phases behind one shared storage lock, resumes every journal phase on worker startup, and blocks conflicting writes until finalization. The accessible options page exposes editor mode, read-only built-ins, validated custom add/remove controls through the executor, and honest local/BYOS status; editor mode is patched atomically against the latest stored record so stale UI cannot restore old exclusions or credentials.
 
 ## PP-006 — Implement BYOS OAuth and Credential Lifecycle
 
-- Status: not started
+- Status: in progress
 - Priority: P0
 - Dependencies: PP-001, PP-003A
 - Spec or plan references: `byos_integrations.md`; BYOS integration; Settings page

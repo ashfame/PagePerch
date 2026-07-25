@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_SETTINGS_V1, type SettingsRecordV1 } from '../domain/settings';
+import {
+  DEFAULT_SETTINGS_V1,
+  type EditorMode,
+  type SettingsRecordV1,
+} from '../domain/settings';
 import { IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY } from '../services/identityMigrationPersistence';
 import { InMemoryChromeStorage } from '../../test/inMemoryChromeStorage';
 import {
@@ -182,6 +186,74 @@ describe('ChromeLocalSettingsRepository', () => {
     await expect(repository.get()).resolves.not.toEqual(firstRead);
   });
 
+  it('atomically updates only editor mode on the latest v1 record and returns a defensive clone', async () => {
+    const latest = settings({
+      pageIdentityExclusions: [
+        { origin: 'https://example.com', parameterNames: ['session'] },
+      ],
+      byosConnection: {
+        accessToken: 'latest-token',
+        expiresAt: '2026-08-01T11:59:00Z',
+        connectedAt: '2026-07-25T10:00:00Z',
+        lastSuccessfulSyncAt: '2026-07-25T10:10:00Z',
+      },
+    });
+    const storage = new InMemoryChromeStorage({
+      [SETTINGS_STORAGE_KEY]: latest,
+    });
+    const repository = new ChromeLocalSettingsRepository(storage);
+    const updated = await repository.updateEditorMode('paragraphs-only');
+    const expected = { ...latest, editorMode: 'paragraphs-only' as const };
+
+    expect(updated).toEqual(expected);
+    expect(storage.snapshot()).toEqual({ [SETTINGS_STORAGE_KEY]: expected });
+    expect(storage.getCalls).toEqual([
+      [IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY, SETTINGS_STORAGE_KEY],
+    ]);
+    expect(storage.setCalls).toEqual([{ [SETTINGS_STORAGE_KEY]: expected }]);
+
+    (updated.pageIdentityExclusions[0]?.parameterNames as string[]).push(
+      'mutated',
+    );
+    if (updated.byosConnection !== undefined) {
+      (updated.byosConnection as { accessToken: string }).accessToken =
+        'mutated';
+    }
+    expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toEqual(expected);
+  });
+
+  it.each([
+    ['absent defaults', undefined],
+    ['understood v0', { schemaVersion: 0, editorMode: 'text-focused-blocks' }],
+  ])(
+    'updates editor mode while safely materializing %s',
+    async (_label, stored) => {
+      const storage = new InMemoryChromeStorage(
+        stored === undefined ? {} : { [SETTINGS_STORAGE_KEY]: stored },
+      );
+      const repository = new ChromeLocalSettingsRepository(storage);
+
+      await expect(
+        repository.updateEditorMode('paragraphs-only'),
+      ).resolves.toEqual(settings({ editorMode: 'paragraphs-only' }));
+      expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toEqual(
+        settings({ editorMode: 'paragraphs-only' }),
+      );
+      expect(storage.setCalls).toHaveLength(1);
+    },
+  );
+
+  it('rejects an invalid editor mode before touching storage', async () => {
+    const storage = new InMemoryChromeStorage();
+    const repository = new ChromeLocalSettingsRepository(storage);
+
+    await expect(
+      repository.updateEditorMode('invalid' as EditorMode),
+    ).rejects.toBeInstanceOf(RepositoryValidationError);
+    expect(storage.getCalls).toEqual([]);
+    expect(storage.setCalls).toEqual([]);
+  });
+
   it('rejects invalid settings writes and never persists S3 credentials or account identity', async () => {
     const storage = new InMemoryChromeStorage();
     const repository = new ChromeLocalSettingsRepository(storage);
@@ -225,7 +297,7 @@ describe('ChromeLocalSettingsRepository', () => {
     );
   });
 
-  it('does not overwrite malformed or future settings through put', async () => {
+  it('does not overwrite malformed or future settings through put or editor-mode update', async () => {
     const future = { schemaVersion: 4, retained: 'recover me' };
     const storage = new InMemoryChromeStorage({
       [SETTINGS_STORAGE_KEY]: future,
@@ -235,7 +307,11 @@ describe('ChromeLocalSettingsRepository', () => {
     await expect(repository.put(settings())).rejects.toBeInstanceOf(
       RepositoryStoredDataError,
     );
+    await expect(
+      repository.updateEditorMode('paragraphs-only'),
+    ).rejects.toBeInstanceOf(RepositoryStoredDataError);
     expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toEqual(future);
+    expect(storage.setCalls).toEqual([]);
   });
 
   it.each([
@@ -264,6 +340,13 @@ describe('ChromeLocalSettingsRepository', () => {
         message:
           'PagePerch data cannot be changed while an identity migration is pending. Retry after the migration finishes.',
       });
+      await expect(
+        repository.updateEditorMode('text-focused-blocks'),
+      ).rejects.toMatchObject({
+        name: 'RepositoryPendingIdentityMigrationError',
+        code: 'pending-identity-migration',
+        operation: 'put',
+      });
       expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toEqual(existing);
       expect(storage.setCalls).toEqual([]);
       await expect(repository.get()).resolves.toEqual(existing);
@@ -271,8 +354,10 @@ describe('ChromeLocalSettingsRepository', () => {
       await storage.remove(IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY);
       storage.resetCalls();
 
-      await expect(repository.put(requested)).resolves.toBeUndefined();
-      expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toEqual(requested);
+      await expect(
+        repository.updateEditorMode('text-focused-blocks'),
+      ).resolves.toEqual(settings());
+      expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toEqual(settings());
       expect(storage.setCalls).toHaveLength(1);
     },
   );

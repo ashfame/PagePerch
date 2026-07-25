@@ -1,6 +1,7 @@
 import {
   DEFAULT_SETTINGS_V1,
   SETTINGS_SCHEMA_VERSION,
+  type EditorMode,
   type SettingsRecordV0,
   type SettingsRecordV1,
 } from '../domain/settings';
@@ -48,6 +49,10 @@ function migrateSettingsV0(settings: SettingsRecordV0): SettingsRecordV1 {
     editorMode: settings.editorMode,
     pageIdentityExclusions: [],
   };
+}
+
+function isEditorMode(value: unknown): value is EditorMode {
+  return value === 'text-focused-blocks' || value === 'paragraphs-only';
 }
 
 function invalidStoredSettings(value: unknown): RepositoryStoredDataError {
@@ -145,6 +150,54 @@ export class ChromeLocalSettingsRepository implements SettingsRepository {
         { [SETTINGS_STORAGE_KEY]: settingsSnapshot },
         'put',
       );
+    });
+  }
+
+  async updateEditorMode(editorMode: EditorMode): Promise<SettingsRecordV1> {
+    if (!isEditorMode(editorMode)) {
+      throw new RepositoryValidationError(
+        'put',
+        'Cannot store an invalid PagePerch editor mode.',
+      );
+    }
+
+    return this.#enqueue(async () => {
+      const stored = await storageGet(
+        this.#storageArea,
+        [IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY, SETTINGS_STORAGE_KEY],
+        'put',
+      );
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          stored,
+          IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY,
+        )
+      ) {
+        throw new RepositoryPendingIdentityMigrationError('put');
+      }
+
+      const existingValue = stored[SETTINGS_STORAGE_KEY];
+      let currentSettings: SettingsRecordV1;
+
+      if (existingValue === undefined) {
+        currentSettings = cloneSettings(DEFAULT_SETTINGS_V1);
+      } else if (isSettingsRecordV1(existingValue)) {
+        currentSettings = cloneSettings(existingValue);
+      } else if (isSettingsRecordV0(existingValue)) {
+        currentSettings = migrateSettingsV0(existingValue);
+      } else {
+        throw invalidStoredSettings(existingValue);
+      }
+
+      const updated = { ...currentSettings, editorMode };
+      await storageSet(
+        this.#storageArea,
+        { [SETTINGS_STORAGE_KEY]: updated },
+        'put',
+      );
+
+      return cloneSettings(updated);
     });
   }
 

@@ -1,0 +1,191 @@
+.options-shell {
+  width: min(100%, 64rem);
+}
+
+.options-state {
+  max-width: 38rem;
+}
+
+.options-state .session-alert {
+  margin-bottom: 1rem;
+}
+
+.identity-surface,
+.options-notice {
+  grid-column: 1 / -1;
+}
+
+.field-label {
+  display: block;
+  margin-top: 1rem;
+  margin-bottom: 0.35rem;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.surface :where(input, select) {
+  width: min(100%, 30rem);
+  min-height: 2.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: var(--surface-muted);
+}
+
+.surface :where(button, input, select):disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.built-in-exclusions,
+.custom-exclusions {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.identity-surface h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.built-in-exclusions > p {
+  margin-top: 0.85rem;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.built-in-exclusions ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.built-in-exclusions code,
+.custom-rule code {
+  overflow-wrap: anywhere;
+}
+
+.built-in-exclusions li {
+  padding: 0.3rem 0.5rem;
+  border-radius: 0.45rem;
+  background: var(--surface-muted);
+}
+
+.custom-rule-list,
+.custom-rule ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.custom-rule-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.custom-rule {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: var(--surface-muted);
+}
+
+.custom-rule > code {
+  display: block;
+  margin-bottom: 0.6rem;
+  font-weight: 700;
+}
+
+.custom-rule ul {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.custom-rule li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+button.secondary-button {
+  min-height: 2.25rem;
+  padding: 0.4rem 0.65rem;
+  border-color: var(--border);
+  color: var(--text);
+  background: var(--surface);
+}
+
+button.secondary-button:hover {
+  border-color: var(--brand);
+  background: var(--surface);
+}
+
+.empty-state {
+  padding: 0.75rem;
+  border: 1px dashed var(--border);
+  border-radius: 0.65rem;
+  background: var(--surface-muted);
+}
+
+.custom-rule-form {
+  margin-top: 1rem;
+}
+
+.custom-rule-form fieldset {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.custom-rule-form legend {
+  padding: 0 0.35rem;
+  font-weight: 700;
+}
+
+.field-help {
+  margin-top: 0.45rem !important;
+  font-size: 0.82rem;
+}
+
+.custom-rule-form button {
+  justify-self: start;
+  margin-top: 1rem;
+}
+
+.storage-status {
+  margin-bottom: 0.75rem !important;
+  color: var(--brand-strong) !important;
+  font-size: 1rem;
+}
+
+.options-notice {
+  min-height: 3.25rem;
+}
+
+.options-notice > * {
+  margin: 0 !important;
+}
+
+@media (max-width: 420px) {
+  .custom-rule li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .custom-rule li button,
+  .custom-rule-form button,
+  .options-state button {
+    width: 100%;
+  }
+}
