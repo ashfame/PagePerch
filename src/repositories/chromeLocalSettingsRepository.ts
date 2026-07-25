@@ -35,6 +35,7 @@ function cloneSettings(settings: SettingsRecordV1): SettingsRecordV1 {
   const cloned: SettingsRecordV1 = {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     editorMode: settings.editorMode,
+    showRecentNotesOnOrigin: settings.showRecentNotesOnOrigin,
     pageIdentityExclusions: settings.pageIdentityExclusions.map((rule) => ({
       origin: rule.origin,
       parameterNames: [...rule.parameterNames],
@@ -51,6 +52,7 @@ function migrateSettingsV0(settings: SettingsRecordV0): SettingsRecordV1 {
   return {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     editorMode: settings.editorMode,
+    showRecentNotesOnOrigin: false,
     pageIdentityExclusions: [],
   };
 }
@@ -229,6 +231,56 @@ export class ChromeLocalSettingsRepository implements SettingsRepository {
     });
   }
 
+  async updateShowRecentNotesOnOrigin(
+    showRecentNotesOnOrigin: boolean,
+  ): Promise<SettingsRecordV1> {
+    if (typeof showRecentNotesOnOrigin !== 'boolean') {
+      throw new RepositoryValidationError(
+        'put',
+        'Cannot store an invalid PagePerch recent-notes preference.',
+      );
+    }
+
+    return this.#enqueue(async () => {
+      const stored = await storageGet(
+        this.#storageArea,
+        [IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY, SETTINGS_STORAGE_KEY],
+        'put',
+      );
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          stored,
+          IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY,
+        )
+      ) {
+        throw new RepositoryPendingIdentityMigrationError('put');
+      }
+
+      const existingValue = stored[SETTINGS_STORAGE_KEY];
+      let currentSettings: SettingsRecordV1;
+
+      if (existingValue === undefined) {
+        currentSettings = cloneSettings(DEFAULT_SETTINGS_V1);
+      } else if (isSettingsRecordV1(existingValue)) {
+        currentSettings = cloneSettings(existingValue);
+      } else if (isSettingsRecordV0(existingValue)) {
+        currentSettings = migrateSettingsV0(existingValue);
+      } else {
+        throw invalidStoredSettings(existingValue);
+      }
+
+      const updated = { ...currentSettings, showRecentNotesOnOrigin };
+      await storageSet(
+        this.#storageArea,
+        { [SETTINGS_STORAGE_KEY]: updated },
+        'put',
+      );
+
+      return cloneSettings(updated);
+    });
+  }
+
   async updateByosConnection(
     connection: ByosConnectionV1 | undefined,
   ): Promise<SettingsRecordV1> {
@@ -276,6 +328,7 @@ export class ChromeLocalSettingsRepository implements SettingsRepository {
           ? {
               schemaVersion: currentSettings.schemaVersion,
               editorMode: currentSettings.editorMode,
+              showRecentNotesOnOrigin: currentSettings.showRecentNotesOnOrigin,
               pageIdentityExclusions: currentSettings.pageIdentityExclusions,
             }
           : {
@@ -333,7 +386,11 @@ export class ChromeLocalSettingsRepository implements SettingsRepository {
 
       const existingValue = stored[SETTINGS_STORAGE_KEY];
 
-      if (existingValue === undefined || !isSettingsRecordV1(existingValue)) {
+      const currentSettings = isSettingsRecordV1(existingValue)
+        ? existingValue
+        : undefined;
+
+      if (currentSettings === undefined) {
         if (existingValue !== undefined && !isSettingsRecordV0(existingValue)) {
           throw invalidStoredSettings(existingValue);
         }
@@ -341,7 +398,7 @@ export class ChromeLocalSettingsRepository implements SettingsRepository {
         return 'mismatch';
       }
 
-      const currentConnection = existingValue.byosConnection;
+      const currentConnection = currentSettings.byosConnection;
 
       if (
         currentConnection === undefined ||
@@ -351,7 +408,7 @@ export class ChromeLocalSettingsRepository implements SettingsRepository {
       }
 
       const updated: SettingsRecordV1 = {
-        ...existingValue,
+        ...currentSettings,
         byosConnection: {
           ...currentConnection,
           lastSuccessfulSyncAt,

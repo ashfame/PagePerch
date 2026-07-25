@@ -1,4 +1,4 @@
-import { useCallback, useId, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import IsolatedBlockEditor, {
   EditorLoaded,
 } from '@automattic/isolated-block-editor';
@@ -681,12 +681,12 @@ function createCapabilities(
       },
       currentPattern: null,
       defaultPreferences: {
-        fixedToolbar: true,
+        fixedToolbar: false,
       },
       disableCanvasAnimations: true,
       disallowEmbed: [],
       footer: false,
-      header: true,
+      header: false,
       linkMenu: [],
       moreMenu: false as const,
       patterns: [],
@@ -699,11 +699,11 @@ function createCapabilities(
       },
       toolbar: {
         documentInspector: false,
-        inserter: true,
+        inserter: false,
         inspector: false,
         navigation: false,
         selectorTool: false,
-        undo: true,
+        undo: false,
       },
     },
     editor: {
@@ -722,8 +722,8 @@ function createCapabilities(
       defaultEditorStyles: [],
       disablePostFormats: true,
       fetchLinkSuggestions: NO_LINK_SUGGESTIONS,
-      fixedToolbar: true,
-      hasFixedToolbar: true,
+      fixedToolbar: false,
+      hasFixedToolbar: false,
       hasInlineToolbar: false,
       hasPermissionsToManageWidgets: false,
       hasUploadPermissions: false,
@@ -800,8 +800,6 @@ function PageNoteEditorRuntime({
   onLoading,
   onError,
 }: PageNoteEditorProps) {
-  const headingId = useId();
-  const descriptionId = useId();
   const [isLoaded, setIsLoaded] = useState(false);
   const [fatalLoadError, setFatalLoadError] = useState<Error | null>(null);
   const phaseRef = useRef<'idle' | 'loading' | 'ready'>('idle');
@@ -813,6 +811,7 @@ function PageNoteEditorRuntime({
   const latestMutationVersionRef = useRef(0);
   const lastScheduledMutationVersionRef = useRef(0);
   const queuedMutationRef = useRef<SerializedMutation | null>(null);
+  const lastSerializedMutationRef = useRef<string>();
 
   const reportError = useCallback(
     (error?: unknown) => {
@@ -886,16 +885,19 @@ function PageNoteEditorRuntime({
     (parse: ParseBlocks, rawHandler: HandleRawHtml): BlockValue[] => {
       const content = initialContentRef.current;
 
-      if (content.trim() === '') {
-        return [];
-      }
-
       try {
-        const parsed = BLOCK_COMMENT_PATTERN.test(content)
-          ? parse(content)
-          : rawHandler({ HTML: content });
+        const blocks =
+          content.trim() === ''
+            ? [makeBlock('core/paragraph')]
+            : sanitizeBlocks(
+                BLOCK_COMMENT_PATTERN.test(content)
+                  ? parse(content)
+                  : rawHandler({ HTML: content }),
+                editorMode,
+              );
+        lastSerializedMutationRef.current = serialize(blocks);
 
-        return sanitizeBlocks(parsed, editorMode);
+        return blocks;
       } catch (error) {
         return failLoad(error);
       }
@@ -935,12 +937,12 @@ function PageNoteEditorRuntime({
         return;
       }
 
-      const mutationVersion = mutationVersionRef.current + 1;
-      mutationVersionRef.current = mutationVersion;
-      latestMutationVersionRef.current = mutationVersion;
       const blocks = values[0];
 
       if (!Array.isArray(blocks)) {
+        const mutationVersion = mutationVersionRef.current + 1;
+        mutationVersionRef.current = mutationVersion;
+        latestMutationVersionRef.current = mutationVersion;
         reportError(
           new Error('The editor returned an unsupported block mutation.'),
         );
@@ -948,9 +950,19 @@ function PageNoteEditorRuntime({
       }
 
       try {
+        const contentHtml = serialize(blocks);
+
+        if (contentHtml === lastSerializedMutationRef.current) {
+          return;
+        }
+
+        lastSerializedMutationRef.current = contentHtml;
+        const mutationVersion = mutationVersionRef.current + 1;
+        mutationVersionRef.current = mutationVersion;
+        latestMutationVersionRef.current = mutationVersion;
         forwardMutation({
           version: mutationVersion,
-          contentHtml: serialize(blocks),
+          contentHtml,
         });
       } catch (error) {
         reportError(error);
@@ -962,30 +974,15 @@ function PageNoteEditorRuntime({
   return (
     <section
       className="page-note-editor"
-      aria-labelledby={headingId}
-      aria-describedby={descriptionId}
+      aria-label="Page note editor"
       aria-busy={fatalLoadError === null && !isLoaded}
     >
-      <h3 id={headingId} className="page-note-editor__heading">
-        Page note editor
-      </h3>
-      <p id={descriptionId} className="page-note-editor__description">
-        Write a private note using the available local text blocks.
-      </p>
       {fatalLoadError !== null ? (
         <p className="page-note-editor__error" role="alert">
           This note could not be opened safely. Editing is disabled to protect
           its stored content.
         </p>
-      ) : isLoaded ? null : (
-        <p
-          className="page-note-editor__loading"
-          role="status"
-          aria-live="polite"
-        >
-          Loading note editor
-        </p>
-      )}
+      ) : null}
       {fatalLoadError === null ? (
         <div className="page-note-editor__canvas">
           <IsolatedBlockEditor

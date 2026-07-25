@@ -29,6 +29,7 @@ function connectedSettings(
   return {
     schemaVersion: 1,
     editorMode: 'text-focused-blocks',
+    showRecentNotesOnOrigin: false,
     pageIdentityExclusions: [],
     byosConnection: {
       accessToken: 'oauth-token',
@@ -148,6 +149,7 @@ describe('ByosSyncRuntime preflight and outcomes', () => {
           Promise.resolve({
             schemaVersion: 1,
             editorMode: 'text-focused-blocks',
+            showRecentNotesOnOrigin: false,
             pageIdentityExclusions: [],
           }),
         updateLastSuccessfulSyncAtIfCurrent:

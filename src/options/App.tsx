@@ -31,7 +31,10 @@ import {
   sortedPageIdentityExclusions,
 } from './settingsModel';
 
-type SettingsPort = Pick<SettingsRepository, 'get' | 'updateEditorMode'>;
+type SettingsPort = Pick<
+  SettingsRepository,
+  'get' | 'updateEditorMode' | 'updateShowRecentNotesOnOrigin'
+>;
 type MigrationPort = Pick<IdentityMigrationExecutor, 'start'>;
 type ByosConnectionPort = Pick<ByosCoordinator, 'connect' | 'disconnect'>;
 
@@ -68,7 +71,12 @@ interface Notice {
 }
 
 type BusyOperation =
-  'byos-connect' | 'byos-disconnect' | 'byos-refresh' | 'editor' | 'identity';
+  | 'byos-connect'
+  | 'byos-disconnect'
+  | 'byos-refresh'
+  | 'editor'
+  | 'identity'
+  | 'recent-notes';
 
 type ByosRetryAction = 'connect' | 'disconnect' | 'refresh';
 
@@ -101,6 +109,8 @@ function busyMessage(operation: BusyOperation): string {
       return 'Saving editor mode…';
     case 'identity':
       return 'Updating page identity…';
+    case 'recent-notes':
+      return 'Saving recent-notes preference…';
   }
 }
 
@@ -356,6 +366,37 @@ export function OptionsApp({ dependencies }: OptionsAppProps) {
     }
   };
 
+  const saveShowRecentNotesOnOrigin = async (
+    currentSettings: SettingsRecordV1,
+    showRecentNotesOnOrigin: boolean,
+  ): Promise<void> => {
+    if (
+      currentSettings.showRecentNotesOnOrigin === showRecentNotesOnOrigin ||
+      !beginOperation('recent-notes')
+    ) {
+      return;
+    }
+
+    try {
+      const updatedSettings =
+        await dependencies.settings.updateShowRecentNotesOnOrigin(
+          showRecentNotesOnOrigin,
+        );
+      setView({ status: 'ready', settings: updatedSettings });
+      setNotice({
+        kind: 'saved',
+        message: 'Recent-notes preference saved.',
+      });
+    } catch {
+      setNotice({
+        kind: 'error',
+        message: 'Recent-notes preference could not be saved. Retry.',
+      });
+    } finally {
+      finishOperation();
+    }
+  };
+
   const migrateIdentitySettings = async (
     requestedSettings: SettingsRecordV1,
     clearInputs: boolean,
@@ -595,6 +636,27 @@ export function OptionsApp({ dependencies }: OptionsAppProps) {
               <option value="text-focused-blocks">Text-focused blocks</option>
               <option value="paragraphs-only">Paragraphs only</option>
             </select>
+            <label className="checkbox-field" htmlFor="show-recent-notes">
+              <input
+                id="show-recent-notes"
+                type="checkbox"
+                checked={view.settings.showRecentNotesOnOrigin}
+                disabled={isBusy}
+                onChange={(event) => {
+                  void saveShowRecentNotesOnOrigin(
+                    view.settings,
+                    event.currentTarget.checked,
+                  );
+                }}
+              />
+              <span>
+                <strong>Show recent notes on root pages</strong>
+                <small>
+                  Display other saved notes from the same origin when its root
+                  page is open.
+                </small>
+              </span>
+            </label>
           </section>
 
           <section

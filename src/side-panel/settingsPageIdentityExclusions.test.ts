@@ -7,6 +7,7 @@ function settings(): SettingsRecordV1 {
   return {
     schemaVersion: 1,
     editorMode: 'text-focused-blocks',
+    showRecentNotesOnOrigin: false,
     pageIdentityExclusions: [
       {
         origin: 'https://example.com',

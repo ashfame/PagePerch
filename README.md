@@ -8,7 +8,7 @@ PagePerch is a private, offline-first Chrome side-panel extension for keeping on
 
 - Opens from the Chrome toolbar and follows the active HTTP or HTTPS tab.
 - Gives every canonical page its own autosaving block-editor document.
-- Shows a recent-note index on an exact-origin root page such as `https://example.com/`.
+- Can show an opt-in recent-note index on an exact-origin root page such as `https://example.com/`.
 - Offers text-focused blocks or a paragraphs-only editor mode.
 - Follows the browser or operating-system light/dark preference automatically.
 - Ignores common tracking parameters when deciding whether two URLs identify the same page.
@@ -112,10 +112,11 @@ Open PagePerch settings from the side panel or Chrome's extension menu to choose
 
 - **Text-focused blocks** for paragraphs, headings, lists, quotes, code, preformatted text, separators, inline formatting, and links.
 - **Paragraphs only** for paragraph blocks, inline formatting, links, undo, and redo.
+- **Show recent notes on root pages** to display other saved notes from the same exact origin; this is off by default.
 
 Media, embeds, reusable blocks, remote WordPress APIs, code editing, fullscreen, preview, and unrelated Gutenberg panels are disabled.
 
-On an exact-origin root page, PagePerch shows the editable root note followed by the most recently saved non-root notes for that exact origin. Selecting an entry opens its canonical HTTP or HTTPS URL in a new tab.
+When **Show recent notes on root pages** is enabled, an exact-origin root page shows its editable note followed by the most recently saved non-root notes for that exact origin. Selecting an entry opens its canonical HTTP or HTTPS URL in a new tab. When the setting is off, PagePerch does not connect to or query the recent-note index.
 
 ## Why a service worker exists
 
@@ -191,7 +192,7 @@ npm run test:e2e
 npm run release:package
 ```
 
-Set `PAGEPERCH_HEADFUL=1` when running `npm run test:e2e` to display Chromium. The Playwright suite exercises the packaged worker and options page, a real editable Gutenberg surface, active-tab navigation, exact local persistence across panel reload and browser restart, and the root recent-note index. The native toolbar-to-side-panel host click remains an explicit manual check because Playwright cannot operate Chrome's browser toolbar.
+Set `PAGEPERCH_HEADFUL=1` when running `npm run test:e2e` to display Chromium. The Playwright suite exercises the packaged worker and options page, a keyboard-only blank Gutenberg edit with undo/redo, content-driven growth, exact local persistence across panel reload and browser restart, and the default-off then opted-in root recent-note index. The native toolbar-to-side-panel host click remains an explicit manual check because Playwright cannot operate Chrome's browser toolbar.
 
 Automated tests never use live BYOS credentials. OAuth, temporary credentials, SigV4/path-style S3 transport, reconciliation, failures, expiry, and retries use controlled mocks; live consent and remote storage remain manual acceptance checks.
 
@@ -202,8 +203,8 @@ Before a release candidate:
 - Load `dist/` in Chrome 114 or newer and verify the toolbar action opens the native side panel.
 - Edit notes on two HTTP/HTTPS pages, wait for **Saved locally**, reload the panel, restart Chrome, and confirm both notes remain.
 - Navigate and switch active tabs while editing and confirm the pending note is saved before PagePerch changes documents.
-- Clear a saved note and confirm it disappears from the root recent-note index.
-- Verify the exact-origin root index excludes another scheme, subdomain, port, and origin and opens the chosen canonical page in one new tab.
+- Enable **Show recent notes on root pages**, clear a saved note, and confirm it disappears from the root recent-note index.
+- With **Show recent notes on root pages** enabled, verify the exact-origin root index excludes another scheme, subdomain, port, and origin and opens the chosen canonical page in one new tab.
 - Add an exact-origin exclusion that collapses multiple noted URLs and confirm the resulting document stacks each note oldest-to-newest under its `Source: <original URL>` heading.
 - Remove the exclusion and confirm the combined document moves without content loss.
 - Verify both editor modes, keyboard navigation, visible focus, a narrow side panel, reduced motion, and live operating-system light/dark changes.

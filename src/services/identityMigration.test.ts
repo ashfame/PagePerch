@@ -45,6 +45,7 @@ function settings(
   return {
     schemaVersion: 1,
     editorMode: 'text-focused-blocks',
+    showRecentNotesOnOrigin: false,
     pageIdentityExclusions,
     ...overrides,
   };
@@ -126,6 +127,7 @@ function settingsFingerprint(record: SettingsRecordV1): string {
     JSON.stringify({
       schemaVersion: record.schemaVersion,
       editorMode: record.editorMode,
+      showRecentNotesOnOrigin: record.showRecentNotesOnOrigin,
       pageIdentityExclusions: record.pageIdentityExclusions.map((rule) => ({
         origin: rule.origin,
         parameterNames: [...rule.parameterNames],

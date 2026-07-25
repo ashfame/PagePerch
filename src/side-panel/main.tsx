@@ -109,6 +109,7 @@ createRoot(rootElement).render(
       pageOpener={pageOpener}
       pageSyncVisibility={pageSyncVisibility}
       recentNotesIndex={recentNotesIndex}
+      settings={settingsRepository}
     />
   </StrictMode>,
 );

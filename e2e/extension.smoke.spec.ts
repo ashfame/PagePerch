@@ -357,6 +357,24 @@ async function seedStoredNotes(
   );
 }
 
+async function persistRecentNotesPreference(
+  serviceWorker: Worker,
+  showRecentNotesOnOrigin: boolean,
+): Promise<void> {
+  await serviceWorker.evaluate(
+    async (enabled) =>
+      chrome.storage.local.set({
+        'pageperch:v1:settings': {
+          schemaVersion: 1,
+          editorMode: 'text-focused-blocks',
+          showRecentNotesOnOrigin: enabled,
+          pageIdentityExclusions: [],
+        },
+      }),
+    showRecentNotesOnOrigin,
+  );
+}
+
 async function readStoredNote(
   serviceWorker: Worker,
   note: StoredNote,
@@ -369,11 +387,66 @@ async function readStoredNote(
   }, storageKey);
 }
 
+async function expectSimplifiedEditorReady(
+  panelPage: Page,
+  pageUrl: string,
+  pageTitle: string,
+): Promise<Locator> {
+  const shell = panelPage.getByTestId('page-document-shell');
+  await expect(shell).toHaveAttribute(
+    'data-page-key',
+    sha256Base64Url(pageUrl),
+  );
+  const editor = panelPage.getByRole('region', {
+    name: 'Page note editor',
+  });
+  await expect(editor).toHaveAttribute('aria-busy', 'false', {
+    timeout: 15_000,
+  });
+  const editable = editor.locator('[contenteditable="true"]').first();
+  await expect(editable).toBeVisible();
+
+  await expect(panelPage.getByText('Page note', { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(panelPage.getByText(pageTitle, { exact: true })).toHaveCount(0);
+  await expect(
+    panelPage.getByText(
+      `${new URL(pageUrl).pathname}${new URL(pageUrl).search}`,
+      { exact: true },
+    ),
+  ).toHaveCount(0);
+  await expect(
+    panelPage.getByText(
+      'Write a private note using the available local text blocks.',
+      { exact: true },
+    ),
+  ).toHaveCount(0);
+  await expect(
+    panelPage.getByText('Loading cached note', { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    panelPage.getByText('Loading note editor', { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    editor.locator('button:visible, [role="button"]:visible'),
+  ).toHaveCount(0);
+  await expect(
+    editor.locator(
+      '.interface-interface-skeleton__header:visible, .edit-post-header:visible, .editor-header:visible, [role="toolbar"]:visible',
+    ),
+  ).toHaveCount(0);
+
+  return editable;
+}
+
 async function expectStoredNoteVisible(
   panelPage: Page,
+  pageUrl: string,
+  pageTitle: string,
   visibleText: string,
 ): Promise<void> {
-  await expect(panelPage.getByText('Loading cached note')).toBeHidden();
+  await expectSimplifiedEditorReady(panelPage, pageUrl, pageTitle);
   await expect(panelPage.getByText(visibleText, { exact: true })).toBeVisible({
     timeout: 15_000,
   });
@@ -460,18 +533,32 @@ test('loads the unpacked module worker and both branded React surfaces', async (
       'chrome-extension: page type is not supported',
     );
 
-    const button = session.page.getByRole('button', { name: 'Open settings' });
+    await expect(
+      session.page.getByRole('heading', { name: 'Preferences' }),
+    ).toHaveCount(0);
+    const button = session.page.getByRole('button', { name: 'Settings' });
     await focusWithKeyboard(session.page, button);
     await expect(button).toBeFocused();
 
     const visualState = await button.evaluate((element) => {
       const styles = getComputedStyle(element);
+      const buttonBounds = element.getBoundingClientRect();
+      const headerBounds = element
+        .closest('.brand-header')
+        ?.getBoundingClientRect();
       return {
         backgroundColor: getComputedStyle(document.body).backgroundColor,
+        buttonBackgroundColor: styles.backgroundColor,
+        buttonBorderWidth: styles.borderTopWidth,
         fitsViewport: document.documentElement.scrollWidth <= window.innerWidth,
         outlineStyle: styles.outlineStyle,
         outlineWidth: styles.outlineWidth,
         reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
+        rightGap:
+          headerBounds === undefined
+            ? Number.POSITIVE_INFINITY
+            : headerBounds.right - buttonBounds.right,
+        textDecorationLine: styles.textDecorationLine,
         transitionDurations: styles.transitionDuration
           .split(',')
           .map((duration) => Number.parseFloat(duration)),
@@ -480,11 +567,15 @@ test('loads the unpacked module worker and both branded React surfaces', async (
 
     expect(visualState).toMatchObject({
       backgroundColor: 'rgb(16, 23, 18)',
+      buttonBackgroundColor: 'rgba(0, 0, 0, 0)',
+      buttonBorderWidth: '0px',
       fitsViewport: true,
       outlineStyle: 'solid',
       outlineWidth: '3px',
       reducedMotion: true,
+      textDecorationLine: 'underline',
     });
+    expect(visualState.rightGap).toBeLessThanOrEqual(1);
     expect(Math.max(...visualState.transitionDurations)).toBeLessThanOrEqual(
       0.001,
     );
@@ -543,25 +634,11 @@ test('opens the packaged editor for a supported HTTP tab without fatal runtime e
       await chrome.tabs.update(tabId, { active: true });
     }, fixtureTabId);
 
-    await expect(
-      panelPage.getByRole('heading', {
-        level: 2,
-        name: 'Notes for PagePerch editor fixture',
-      }),
-    ).toBeVisible();
-    await expect(panelPage.getByText('Loading cached note')).toBeHidden();
-    await panelPage
-      .getByRole('button', {
-        name: 'Add default block',
-      })
-      .evaluate((button: HTMLButtonElement) => {
-        button.click();
-      });
-    await expect(
-      panelPage.locator('[contenteditable="true"]').first(),
-    ).toBeVisible({
-      timeout: 15_000,
-    });
+    await expectSimplifiedEditorReady(
+      panelPage,
+      fixtureUrl,
+      'PagePerch editor fixture',
+    );
     await expect(
       panelPage.getByText('This note could not be opened safely'),
     ).toHaveCount(0);
@@ -597,30 +674,24 @@ test('tracks supported-tab navigation and preserves a local note through panel a
       `chrome-extension://${session.extensionId}/side-panel.html`,
     );
     await activateTabForUrl(session.serviceWorker, firstUrl);
-    await expect(
-      panelPage.getByRole('heading', {
-        level: 2,
-        name: 'Notes for Navigation first fixture',
-      }),
-    ).toBeVisible();
+    await expectSimplifiedEditorReady(
+      panelPage,
+      firstUrl,
+      'Navigation first fixture',
+    );
 
     await session.page.goto(secondUrl);
-    await expect(
-      panelPage.getByRole('heading', {
-        level: 2,
-        name: 'Notes for Navigation second fixture',
-      }),
-    ).toBeVisible();
-    await panelPage
-      .getByRole('button', {
-        name: 'Add default block',
-      })
-      .evaluate((button: HTMLButtonElement) => {
-        button.click();
-      });
-    const editable = panelPage.locator('[contenteditable="true"]').first();
-    await expect(editable).toBeVisible({ timeout: 15_000 });
-    await editable.fill(persistedText);
+    const editable = await expectSimplifiedEditorReady(
+      panelPage,
+      secondUrl,
+      'Navigation second fixture',
+    );
+    expect(await readStoredNote(session.serviceWorker, note)).toBeUndefined();
+    await focusWithKeyboard(panelPage, editable, 24);
+    await expect(editable).toBeFocused();
+    await panelPage.keyboard.type(persistedText);
+    await expect(editable).toContainText(persistedText);
+
     await expect
       .poll(async () => {
         const stored = (await readStoredNote(session.serviceWorker, note)) as
@@ -629,14 +700,75 @@ test('tracks supported-tab navigation and preserves a local note through panel a
       })
       .toContain(persistedText);
 
-    await panelPage.reload();
+    await panelPage.keyboard.press('Control+z');
+    await expect(editable).not.toContainText(persistedText);
+    await panelPage.keyboard.press('Control+Shift+z');
+    await expect(editable).toContainText(persistedText);
+
+    const documentHeightBeforeGrowth = await panelPage.evaluate(
+      () => document.documentElement.scrollHeight,
+    );
+    const lastExpansionLine = 'Expansion line 24 keeps the document growing';
+    for (let index = 1; index <= 24; index += 1) {
+      await panelPage.keyboard.press('End');
+      await panelPage.keyboard.press('Enter');
+      await panelPage.keyboard.type(
+        index === 24
+          ? lastExpansionLine
+          : `Expansion line ${String(index)} adds local note content`,
+      );
+    }
     await expect(
-      panelPage.getByRole('heading', {
-        level: 2,
-        name: 'Notes for Navigation second fixture',
-      }),
+      panelPage.getByText(lastExpansionLine, { exact: true }),
     ).toBeVisible();
-    await expectStoredNoteVisible(panelPage, persistedText);
+    await expect
+      .poll(() =>
+        panelPage.evaluate(() => document.documentElement.scrollHeight),
+      )
+      .toBeGreaterThan(documentHeightBeforeGrowth);
+    const overflowState = await panelPage
+      .getByRole('region', { name: 'Page note editor' })
+      .evaluate((editor) => {
+        const innerVerticalScrollers = [editor, ...editor.querySelectorAll('*')]
+          .filter((element) => {
+            const htmlElement = element as HTMLElement;
+            const overflowY = getComputedStyle(htmlElement).overflowY;
+
+            return (
+              (overflowY === 'auto' || overflowY === 'scroll') &&
+              htmlElement.scrollHeight > htmlElement.clientHeight + 1
+            );
+          })
+          .map((element) => (element as HTMLElement).className);
+
+        return {
+          documentHeight: document.documentElement.scrollHeight,
+          innerVerticalScrollers,
+          viewportHeight: window.innerHeight,
+        };
+      });
+    expect(overflowState.documentHeight).toBeGreaterThan(
+      overflowState.viewportHeight,
+    );
+    expect(overflowState.innerVerticalScrollers).toEqual([]);
+    await expect
+      .poll(async () => {
+        const stored = (await readStoredNote(session.serviceWorker, note)) as
+          Partial<StoredNote> | undefined;
+        return stored?.contentHtml;
+      })
+      .toContain(lastExpansionLine);
+
+    await panelPage.reload();
+    await expectStoredNoteVisible(
+      panelPage,
+      secondUrl,
+      'Navigation second fixture',
+      persistedText,
+    );
+    await expect(
+      panelPage.getByText(lastExpansionLine, { exact: true }),
+    ).toBeVisible();
 
     const firstExtensionId = session.extensionId;
     session = await restartExtension(session);
@@ -650,13 +782,15 @@ test('tracks supported-tab navigation and preserves a local note through panel a
     );
     await activateTabForUrl(session.serviceWorker, secondUrl);
 
+    await expectStoredNoteVisible(
+      panelPage,
+      secondUrl,
+      'Navigation second fixture',
+      persistedText,
+    );
     await expect(
-      panelPage.getByRole('heading', {
-        level: 2,
-        name: 'Notes for Navigation second fixture',
-      }),
+      panelPage.getByText(lastExpansionLine, { exact: true }),
     ).toBeVisible();
-    await expectStoredNoteVisible(panelPage, persistedText);
     await expect
       .poll(() => errors)
       .toEqual({ consoleErrors: [], pageErrors: [] });
@@ -669,9 +803,11 @@ test('refreshes the exact-origin root index from storage and opens only its cano
   const fixtureServer = await startFixtureServer({
     '/': 'PagePerch origin root',
     '/article?view=notes': 'Saved canonical article',
+    '/subscription': 'Subscription article',
   });
   const rootUrl = `${fixtureServer.origin}/`;
   const canonicalNoteUrl = `${fixtureServer.origin}/article?view=notes`;
+  const subscriptionNoteUrl = `${fixtureServer.origin}/subscription`;
   const unrelatedUrl = 'https://unrelated.test/article';
   const canonicalNote = storedNote(
     canonicalNoteUrl,
@@ -682,6 +818,11 @@ test('refreshes the exact-origin root index from storage and opens only its cano
     unrelatedUrl,
     'Unrelated article',
     'Different origin note',
+  );
+  const subscriptionNote = storedNote(
+    subscriptionNoteUrl,
+    'Subscription article',
+    'Storage subscription note',
   );
   const errors: CapturedRuntimeErrors = {
     consoleErrors: [],
@@ -694,26 +835,39 @@ test('refreshes the exact-origin root index from storage and opens only its cano
     session = launchedSession;
     captureRuntimeErrors(launchedSession.context, errors);
     await launchedSession.page.goto(rootUrl);
+    await seedStoredNotes(launchedSession.serviceWorker, [
+      canonicalNote,
+      unrelatedNote,
+    ]);
     const panelPage = await launchedSession.context.newPage();
     await panelPage.goto(
       `chrome-extension://${launchedSession.extensionId}/side-panel.html`,
     );
     await activateTabForUrl(launchedSession.serviceWorker, rootUrl);
+    await expectSimplifiedEditorReady(
+      panelPage,
+      rootUrl,
+      'PagePerch origin root',
+    );
 
     await expect(
       panelPage.getByRole('heading', {
         level: 2,
         name: 'Recent notes on this origin',
       }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(
-      panelPage.getByText('No other saved notes on this origin yet.'),
-    ).toBeVisible();
+      panelPage.getByText(canonicalNote.title, { exact: true }),
+    ).toHaveCount(0);
 
-    await seedStoredNotes(launchedSession.serviceWorker, [
-      canonicalNote,
-      unrelatedNote,
-    ]);
+    await persistRecentNotesPreference(launchedSession.serviceWorker, true);
+    await panelPage.reload();
+    await expect(
+      panelPage.getByRole('heading', {
+        level: 2,
+        name: 'Recent notes on this origin',
+      }),
+    ).toBeVisible();
     await expect(
       panelPage.getByRole('heading', {
         level: 3,
@@ -723,6 +877,22 @@ test('refreshes the exact-origin root index from storage and opens only its cano
     await expect(
       panelPage.locator('.recent-notes-list > .recent-note-item'),
     ).toHaveCount(1);
+    await expect(panelPage.getByText(unrelatedNote.title)).toHaveCount(0);
+
+    await seedStoredNotes(launchedSession.serviceWorker, [
+      canonicalNote,
+      subscriptionNote,
+      unrelatedNote,
+    ]);
+    await expect(
+      panelPage.getByRole('heading', {
+        level: 3,
+        name: subscriptionNote.title,
+      }),
+    ).toBeVisible();
+    await expect(
+      panelPage.locator('.recent-notes-list > .recent-note-item'),
+    ).toHaveCount(2);
     await expect(panelPage.getByText(unrelatedNote.title)).toHaveCount(0);
 
     const knownTabIds = await launchedSession.serviceWorker.evaluate(async () =>

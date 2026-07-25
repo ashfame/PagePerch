@@ -31,6 +31,7 @@ function settings(overrides: Partial<SettingsRecordV1> = {}): SettingsRecordV1 {
   return {
     schemaVersion: 1,
     editorMode: 'text-focused-blocks',
+    showRecentNotesOnOrigin: false,
     pageIdentityExclusions: [],
     ...overrides,
   };
@@ -80,6 +81,7 @@ function coordinatorHarness(
           ? {
               schemaVersion: stored.schemaVersion,
               editorMode: stored.editorMode,
+              showRecentNotesOnOrigin: stored.showRecentNotesOnOrigin,
               pageIdentityExclusions: stored.pageIdentityExclusions,
             }
           : { ...stored, byosConnection: { ...value } };

@@ -25,6 +25,7 @@
   --alert-border: #bd4b2e;
   --alert-text: #7b2d1a;
   --shadow: 0 12px 32px rgb(29 53 37 / 12%);
+  --side-panel-pattern: rgb(71 85 75 / 8%);
 }
 
 * {
@@ -110,6 +111,71 @@ button:active {
   margin: 0.3rem 0 0;
   color: var(--text-muted);
   font-size: 0.9rem;
+}
+
+.side-panel-shell {
+  padding: 0.75rem;
+  background-color: var(--background);
+  background-image:
+    repeating-linear-gradient(
+      135deg,
+      var(--side-panel-pattern) 0,
+      var(--side-panel-pattern) 1px,
+      transparent 1px,
+      transparent 7px
+    ),
+    repeating-linear-gradient(
+      45deg,
+      transparent 0,
+      transparent 11px,
+      var(--side-panel-pattern) 11px,
+      var(--side-panel-pattern) 12px
+    );
+}
+
+.side-panel-shell .brand-header {
+  margin-bottom: 0.75rem;
+}
+
+.brand-copy {
+  min-width: 0;
+}
+
+button.settings-link {
+  min-height: auto;
+  margin-inline-start: auto;
+  padding: 0.35rem 0.15rem;
+  border: 0;
+  border-radius: 0;
+  color: var(--brand-strong);
+  background: transparent;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+button.settings-link:hover {
+  border-color: transparent;
+  color: var(--brand);
+  background: transparent;
+}
+
+.settings-open-alert {
+  margin: 0 0 0.75rem;
+}
+
+.session-area {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.page-document-shell {
+  min-width: 0;
+  padding: 0.5rem;
+  border: 0;
+  border-radius: 0;
+  background: var(--surface);
+  box-shadow: none;
 }
 
 .surface {
@@ -350,6 +416,7 @@ button:active {
     --alert-border: #d77a61;
     --alert-text: #ffc0ae;
     --shadow: 0 12px 32px rgb(0 0 0 / 28%);
+    --side-panel-pattern: rgb(188 199 191 / 9%);
   }
 }
 
@@ -369,6 +436,10 @@ button:active {
     padding: 0.75rem;
   }
 
+  .side-panel-shell {
+    padding: 0.5rem;
+  }
+
   .brand-header {
     align-items: flex-start;
   }
@@ -378,7 +449,6 @@ button:active {
     height: 2.5rem;
   }
 
-  .preferences-surface > button,
   .note-action-panel > button,
   .recent-note-item > button {
     width: 100%;

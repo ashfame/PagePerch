@@ -18,6 +18,7 @@ function settings(overrides: Partial<SettingsRecordV1> = {}): SettingsRecordV1 {
   return {
     schemaVersion: 1,
     editorMode: 'text-focused-blocks',
+    showRecentNotesOnOrigin: false,
     pageIdentityExclusions: [],
     byosConnection: {
       accessToken: 'oauth-token',

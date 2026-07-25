@@ -191,11 +191,17 @@ export function isSettingsRecordV1(value: unknown): value is SettingsRecordV1 {
     isRecord(value) &&
     hasExactKeys(
       value,
-      ['schemaVersion', 'editorMode', 'pageIdentityExclusions'],
+      [
+        'schemaVersion',
+        'editorMode',
+        'showRecentNotesOnOrigin',
+        'pageIdentityExclusions',
+      ],
       ['byosConnection'],
     ) &&
     value.schemaVersion === SETTINGS_SCHEMA_VERSION &&
     isEditorMode(value.editorMode) &&
+    typeof value.showRecentNotesOnOrigin === 'boolean' &&
     Array.isArray(value.pageIdentityExclusions) &&
     value.pageIdentityExclusions.every(isPageIdentityExclusionRule) &&
     (value.byosConnection === undefined ||

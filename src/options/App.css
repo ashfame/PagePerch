@@ -38,6 +38,34 @@
   opacity: 0.62;
 }
 
+.checkbox-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  max-width: 30rem;
+  margin-top: 1rem;
+  cursor: pointer;
+}
+
+.surface .checkbox-field input {
+  flex: 0 0 auto;
+  width: 1.2rem;
+  min-height: 1.2rem;
+  margin: 0.15rem 0 0;
+  padding: 0;
+  accent-color: var(--brand);
+}
+
+.checkbox-field span {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.checkbox-field small {
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
 .built-in-exclusions,
 .custom-exclusions {
   margin-top: 1.25rem;

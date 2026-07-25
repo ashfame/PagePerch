@@ -8,6 +8,7 @@ import {
 } from 'react';
 
 import '../styles/base.css';
+import type { SettingsRepository } from '../repositories/settingsRepository';
 import type { CanonicalPageOpener } from './chromeCanonicalPageOpener';
 import type { PageNoteEditorProps } from './PageNoteEditor';
 import type {
@@ -53,6 +54,7 @@ export interface SidePanelAppProps {
   readonly pageOpener: CanonicalPageOpener;
   readonly pageSyncVisibility?: PageSyncVisibility;
   readonly recentNotesIndex: RootRecentNotesIndex;
+  readonly settings: Pick<SettingsRepository, 'get'>;
 }
 
 interface SessionView {
@@ -313,11 +315,17 @@ interface RootRecentNotesView {
 function useRootRecentNotes(
   session: SupportedActivePageSessionState | undefined,
   index: RootRecentNotesIndex,
+  enabled: boolean,
 ): RootRecentNotesView {
   const [state, setState] = useState<RootRecentNotesState>();
   const connectionRef = useRef<RootRecentNotesConnection>();
 
   useEffect(() => {
+    if (!enabled) {
+      connectionRef.current = undefined;
+      return;
+    }
+
     const connection = index.connect(setState);
     connectionRef.current = connection;
 
@@ -328,11 +336,15 @@ function useRootRecentNotes(
 
       connection.disconnect();
     };
-  }, [index]);
+  }, [enabled, index]);
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     connectionRef.current?.setSession(session);
-  }, [index, session]);
+  }, [enabled, index, session]);
 
   return {
     retry: () => {
@@ -837,7 +849,6 @@ function SupportedPageShell({
   readonly trustRemoteClaim: boolean;
   readonly Editor: ComponentType<PageNoteEditorProps>;
 }) {
-  const pageTitle = session.title.trim();
   const [editorPhase, setEditorPhase] = useState<'loading' | 'ready' | 'error'>(
     'loading',
   );
@@ -876,26 +887,18 @@ function SupportedPageShell({
   };
 
   return (
-    <section
-      className="surface page-document-shell"
-      aria-labelledby="page-note-heading"
+    <div
+      className="page-document-shell"
+      aria-busy={
+        activeDraft === undefined ||
+        (activeDraft.status === 'state' &&
+          activeDraft.state.status === 'loading')
+      }
+      data-page-key={session.identity.pageKey}
       data-testid="page-document-shell"
     >
-      <p className="surface-label">Page note</p>
-      <h2 id="page-note-heading">
-        Notes for {pageTitle === '' ? 'this page' : pageTitle}
-      </h2>
-      <p className="page-context">
-        <span>Canonical page</span>
-        <code title={session.identity.canonicalUrl}>
-          {canonicalContext(session.identity.canonicalUrl)}
-        </code>
-      </p>
-      {activeDraft === undefined ? (
-        <p className="status note-status" role="status" aria-live="polite">
-          Loading cached note
-        </p>
-      ) : activeDraft.status === 'runtime-error' ? (
+      {activeDraft === undefined ? null : activeDraft.status ===
+        'runtime-error' ? (
         <div className="note-action-panel">
           <p className="session-alert" role="alert">
             {activeDraft.message}
@@ -913,11 +916,8 @@ function SupportedPageShell({
             Retry local note
           </button>
         </div>
-      ) : activeDraft.state.status === 'loading' ? (
-        <p className="status note-status" role="status" aria-live="polite">
-          Loading cached note
-        </p>
-      ) : activeDraft.state.status === 'load-error' ? (
+      ) : activeDraft.state.status === 'loading' ? null : activeDraft.state
+          .status === 'load-error' ? (
         <div className="note-action-panel">
           <p className="session-alert" role="alert">
             {activeDraft.state.error.message}
@@ -1001,7 +1001,7 @@ function SupportedPageShell({
           {actionError}
         </p>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -1058,6 +1058,7 @@ function SessionArea({
   pageOpener,
   pageSyncVisibility,
   recentNotesIndex,
+  showRecentNotesOnOrigin,
 }: {
   readonly view: SessionView;
   readonly draftOwnership: PageNoteOwnership;
@@ -1065,6 +1066,7 @@ function SessionArea({
   readonly pageOpener: CanonicalPageOpener;
   readonly pageSyncVisibility?: PageSyncVisibility;
   readonly recentNotesIndex: RootRecentNotesIndex;
+  readonly showRecentNotesOnOrigin: boolean;
 }) {
   const flushError =
     view.current.status === 'error' &&
@@ -1080,7 +1082,11 @@ function SessionArea({
         : view.lastSupported;
   const transient =
     view.current.status === 'supported' ? undefined : view.current;
-  const recentNotes = useRootRecentNotes(supported, recentNotesIndex);
+  const recentNotes = useRootRecentNotes(
+    supported,
+    recentNotesIndex,
+    showRecentNotesOnOrigin,
+  );
   const syncVisibility = usePageSyncVisibility(supported, pageSyncVisibility);
   const draft = usePageNoteDraft(
     supported,
@@ -1106,7 +1112,7 @@ function SessionArea({
             trustRemoteClaim={syncVisibility.trustRemoteClaim}
             Editor={Editor}
           />
-          {supported.identity.isRoot ? (
+          {showRecentNotesOnOrigin && supported.identity.isRoot ? (
             <RecentOriginNotes
               key={`recent:${supported.identity.pageKey}`}
               pageKey={supported.identity.pageKey}
@@ -1131,8 +1137,10 @@ export function SidePanelApp({
   pageOpener,
   pageSyncVisibility,
   recentNotesIndex,
+  settings,
 }: SidePanelAppProps) {
   const view = useActivePageSession(createController);
+  const [showRecentNotesOnOrigin, setShowRecentNotesOnOrigin] = useState(false);
   const [settingsError, setSettingsError] = useState<string>();
   const settingsAttemptRef = useRef(0);
   const settingsMountedRef = useRef(false);
@@ -1145,6 +1153,33 @@ export function SidePanelApp({
       settingsAttemptRef.current += 1;
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const applyPreference = (value: boolean) => {
+      if (active) {
+        setShowRecentNotesOnOrigin(value);
+      }
+    };
+
+    try {
+      void Promise.resolve(settings.get()).then(
+        (loadedSettings) => {
+          applyPreference(loadedSettings.showRecentNotesOnOrigin);
+        },
+        () => {
+          applyPreference(false);
+        },
+      );
+    } catch {
+      applyPreference(false);
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [settings]);
 
   const handleOpenSettings = () => {
     const attempt = settingsAttemptRef.current + 1;
@@ -1176,11 +1211,23 @@ export function SidePanelApp({
     <main className="app-shell side-panel-shell">
       <header className="brand-header">
         <img src="/brand/page-perch-logo.png" alt="" width="48" height="48" />
-        <div>
+        <div className="brand-copy">
           <h1>PagePerch</h1>
           <p>Notes that stay beside the page.</p>
         </div>
+        <button
+          type="button"
+          className="settings-link"
+          onClick={handleOpenSettings}
+        >
+          Settings
+        </button>
       </header>
+      {settingsError === undefined ? null : (
+        <p className="session-alert settings-open-alert" role="alert">
+          {settingsError}
+        </p>
+      )}
 
       <SessionArea
         view={view}
@@ -1189,26 +1236,8 @@ export function SidePanelApp({
         pageOpener={pageOpener}
         pageSyncVisibility={pageSyncVisibility}
         recentNotesIndex={recentNotesIndex}
+        showRecentNotesOnOrigin={showRecentNotesOnOrigin}
       />
-
-      <section
-        className="surface preferences-surface"
-        aria-labelledby="settings-heading"
-      >
-        <h2 id="settings-heading">Preferences</h2>
-        <p>
-          Review editor safeguards, page identity behavior, and local storage
-          boundaries.
-        </p>
-        {settingsError === undefined ? null : (
-          <p className="session-alert preferences-alert" role="alert">
-            {settingsError}
-          </p>
-        )}
-        <button type="button" onClick={handleOpenSettings}>
-          Open settings
-        </button>
-      </section>
     </main>
   );
 }

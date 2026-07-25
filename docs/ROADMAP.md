@@ -29,3 +29,9 @@ Deliver public-client OAuth PKCE, state validation, early token expiry, one-time
 Status: completed; packaged browser coverage, production audits, complete operator/user documentation, deterministic release artifact/checksum, and manual acceptance handoff are delivered.
 
 Deliver unpacked-extension Playwright flows, production CSP/package audits, full failure-path coverage, CI parity, polished setup/privacy/permissions documentation, and a repeatable release checklist.
+
+## M5 — Post-Release UX Refinement
+
+Status: completed.
+
+Simplify the side-panel header and writing surface, make the root recent-note index explicitly opt-in, reduce panel spacing, and distinguish the editor with a restrained theme-aware diagonal background while preserving failure recovery and automatic local/BYOS behavior.

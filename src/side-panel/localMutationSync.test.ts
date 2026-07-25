@@ -26,6 +26,7 @@ function harness(overrides: Partial<LocalMutationSyncDependencies> = {}) {
     Promise.resolve({
       schemaVersion: 1 as const,
       editorMode: 'text-focused-blocks' as const,
+      showRecentNotesOnOrigin: false,
       pageIdentityExclusions: [],
       byosConnection: {
         accessToken: 'oauth-token',
@@ -129,6 +130,7 @@ describe('local mutation sync observer', () => {
             Promise.resolve({
               schemaVersion: 1 as const,
               editorMode: 'text-focused-blocks' as const,
+              showRecentNotesOnOrigin: false,
               pageIdentityExclusions: [],
             }),
         },
@@ -150,6 +152,7 @@ describe('local mutation sync observer', () => {
           Promise.resolve({
             schemaVersion: 1 as const,
             editorMode: 'text-focused-blocks' as const,
+            showRecentNotesOnOrigin: false,
             pageIdentityExclusions: [],
             byosConnection: {
               accessToken: 'oauth-token',

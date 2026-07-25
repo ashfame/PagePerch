@@ -191,6 +191,7 @@ function cloneSettings(settings: SettingsRecordV1): SettingsRecordV1 {
   const clone: SettingsRecordV1 = {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     editorMode: settings.editorMode,
+    showRecentNotesOnOrigin: settings.showRecentNotesOnOrigin,
     pageIdentityExclusions: settings.pageIdentityExclusions.map(cloneRule),
     ...(byosConnection === undefined ? {} : { byosConnection }),
   };
@@ -448,6 +449,7 @@ function settingsCoreFingerprintInput(settings: SettingsRecordV1): string {
   return JSON.stringify({
     schemaVersion: settings.schemaVersion,
     editorMode: settings.editorMode,
+    showRecentNotesOnOrigin: settings.showRecentNotesOnOrigin,
     byosConnection:
       byos === undefined
         ? null
@@ -464,6 +466,7 @@ function settingsFingerprintInput(settings: SettingsRecordV1): string {
   return JSON.stringify({
     schemaVersion: settings.schemaVersion,
     editorMode: settings.editorMode,
+    showRecentNotesOnOrigin: settings.showRecentNotesOnOrigin,
     pageIdentityExclusions: settings.pageIdentityExclusions.map((rule) => ({
       origin: rule.origin,
       parameterNames: [...rule.parameterNames],

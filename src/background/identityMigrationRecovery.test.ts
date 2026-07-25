@@ -48,6 +48,7 @@ function settings(
   return {
     schemaVersion: 1,
     editorMode: 'text-focused-blocks',
+    showRecentNotesOnOrigin: false,
     pageIdentityExclusions,
     ...overrides,
   };

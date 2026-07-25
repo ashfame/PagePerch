@@ -91,6 +91,7 @@ function cloneSettings(settings: SettingsRecordV1): SettingsRecordV1 {
   return {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     editorMode: settings.editorMode,
+    showRecentNotesOnOrigin: settings.showRecentNotesOnOrigin,
     pageIdentityExclusions: settings.pageIdentityExclusions.map((rule) => ({
       origin: rule.origin,
       parameterNames: [...rule.parameterNames],
@@ -217,6 +218,7 @@ function migrateSettingsV0(value: {
   return {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     editorMode: value.editorMode,
+    showRecentNotesOnOrigin: false,
     pageIdentityExclusions: [],
   };
 }

@@ -17,4 +17,7 @@ export interface SettingsRepository {
     lastSuccessfulSyncAt: string,
   ): Promise<SettingsConnectionCasResult>;
   updateEditorMode(editorMode: EditorMode): Promise<SettingsRecordV1>;
+  updateShowRecentNotesOnOrigin(
+    showRecentNotesOnOrigin: boolean,
+  ): Promise<SettingsRecordV1>;
 }

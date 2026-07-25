@@ -196,7 +196,7 @@ describe('buildPageNoteEditorCapabilities', () => {
         currentPattern: null,
         disableCanvasAnimations: true,
         footer: false,
-        header: true,
+        header: false,
         linkMenu: [],
         moreMenu: false,
         patterns: [],
@@ -209,11 +209,11 @@ describe('buildPageNoteEditorCapabilities', () => {
         },
         toolbar: {
           documentInspector: false,
-          inserter: true,
+          inserter: false,
           inspector: false,
           navigation: false,
           selectorTool: false,
-          undo: true,
+          undo: false,
         },
       },
       editor: {
@@ -225,8 +225,8 @@ describe('buildPageNoteEditorCapabilities', () => {
         autosaveInterval: 0,
         codeEditingEnabled: false,
         defaultEditorStyles: [],
-        fixedToolbar: true,
-        hasFixedToolbar: true,
+        fixedToolbar: false,
+        hasFixedToolbar: false,
         hasPermissionsToManageWidgets: false,
         hasUploadPermissions: false,
         imageSizes: [],
@@ -432,14 +432,20 @@ describe('PageNoteEditor loading contract', () => {
     });
   });
 
-  it('loads empty content as no blocks without invoking either parser', () => {
+  it('loads empty content as one editable paragraph without invoking either parser', () => {
     render(
       <PageNoteEditor {...createProps({ initialContentHtml: ' \n\t ' })} />,
     );
     const parse = vi.fn();
     const rawHandler = vi.fn();
+    const blocks = capturedEditor().onLoad(parse, rawHandler);
 
-    expect(capturedEditor().onLoad(parse, rawHandler)).toEqual([]);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({
+      name: 'core/paragraph',
+      attributes: {},
+      innerBlocks: [],
+    });
     expect(parse).not.toHaveBeenCalled();
     expect(rawHandler).not.toHaveBeenCalled();
   });
@@ -699,6 +705,105 @@ describe('PageNoteEditor loading contract', () => {
 });
 
 describe('PageNoteEditor lifecycle and save contract', () => {
+  it.each([
+    [
+      'input then change before ready with save interleaving',
+      (
+        editor: CapturedEditorProps,
+        loaded: CapturedLoadedProps,
+        initialBlocks: readonly TestBlock[],
+        initialContent: string,
+      ) => {
+        editor.__experimentalOnInput(initialBlocks, {});
+        editor.onSaveContent(initialContent);
+        editor.__experimentalOnChange(initialBlocks, {});
+        loaded.onLoaded();
+      },
+    ],
+    [
+      'change then input after ready with a marker first',
+      (
+        editor: CapturedEditorProps,
+        loaded: CapturedLoadedProps,
+        initialBlocks: readonly TestBlock[],
+        initialContent: string,
+      ) => {
+        editor.__experimentalOnInput(initialBlocks, {
+          isInitialContent: true,
+        });
+        loaded.onLoaded();
+        editor.__experimentalOnChange(initialBlocks, {});
+        editor.onSaveContent(initialContent);
+        editor.__experimentalOnInput(initialBlocks, {});
+      },
+    ],
+    [
+      'an initial marker between unmarked callbacks',
+      (
+        editor: CapturedEditorProps,
+        loaded: CapturedLoadedProps,
+        initialBlocks: readonly TestBlock[],
+        initialContent: string,
+      ) => {
+        editor.__experimentalOnInput(initialBlocks, {});
+        editor.__experimentalOnChange(initialBlocks, {
+          isInitialContent: true,
+        });
+        editor.onSaveContent(initialContent);
+        loaded.onLoaded();
+        editor.__experimentalOnChange(initialBlocks, {});
+      },
+    ],
+    [
+      'an initial marker after ready and unmarked callbacks',
+      (
+        editor: CapturedEditorProps,
+        loaded: CapturedLoadedProps,
+        initialBlocks: readonly TestBlock[],
+        initialContent: string,
+      ) => {
+        loaded.onLoaded();
+        editor.__experimentalOnChange(initialBlocks, {});
+        editor.onSaveContent(initialContent);
+        editor.__experimentalOnInput(initialBlocks, {});
+        editor.__experimentalOnChange(initialBlocks, {
+          isInitialContent: true,
+        });
+      },
+    ],
+  ] as const)(
+    'suppresses blank initialization for %s until the first genuine edit',
+    (_label, initialize) => {
+      const onContentChange = vi.fn();
+      render(<PageNoteEditor {...createProps({ onContentChange })} />);
+      const editor = capturedEditor();
+      const loaded = capturedLoaded();
+      const initialBlocks = editor.onLoad(vi.fn(), vi.fn());
+      const initialContent = serialize(initialBlocks);
+
+      act(() => {
+        initialize(editor, loaded, initialBlocks, initialContent);
+      });
+      expect(onContentChange).not.toHaveBeenCalled();
+
+      const editedBlocks = [
+        createBlock('core/paragraph', {
+          content: 'First real edit',
+        }),
+      ];
+      const editedContent = serialize(editedBlocks);
+      act(() => {
+        loaded.onLoaded();
+        editor.__experimentalOnInput(editedBlocks, {});
+        editor.__experimentalOnChange(editedBlocks, {});
+        editor.onSaveContent(editedContent);
+      });
+
+      expect(onContentChange).toHaveBeenCalledOnce();
+      expect(onContentChange).toHaveBeenCalledWith(editedContent);
+    },
+  );
+
   it('suppresses initialization saves, de-duplicates loading/ready phases, and forwards post-ready strings', () => {
     const onContentChange = vi.fn();
     const onLoading = vi.fn();
@@ -719,7 +824,7 @@ describe('PageNoteEditor lifecycle and save contract', () => {
     });
     expect(onContentChange).not.toHaveBeenCalled();
     expect(onLoading).toHaveBeenCalledOnce();
-    expect(screen.getByRole('status')).toHaveTextContent('Loading note editor');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
 
     const savedBlocks = [
       createBlock('core/paragraph', {
@@ -951,7 +1056,7 @@ describe('PageNoteEditor lifecycle and save contract', () => {
     expect(serialize(spoofedBlocks)).not.toContain('Spoofed content');
   });
 
-  it('queues a first mutation through readiness and allows a later mutation with identical HTML', () => {
+  it('queues the latest pre-ready mutation and ignores later callbacks with identical HTML', () => {
     const onContentChange = vi.fn();
     render(<PageNoteEditor {...createProps({ onContentChange })} />);
     const editor = capturedEditor();
@@ -984,22 +1089,33 @@ describe('PageNoteEditor lifecycle and save contract', () => {
       editor.__experimentalOnChange(blocks, {});
       editor.onSaveContent(content);
     });
-    expect(onContentChange).toHaveBeenCalledTimes(2);
+    expect(onContentChange).toHaveBeenCalledOnce();
     expect(onContentChange).toHaveBeenNthCalledWith(1, content);
-    expect(onContentChange).toHaveBeenNthCalledWith(2, content);
+
+    const changedBlocks = [
+      createBlock('core/paragraph', {
+        content: 'Actually changed serialization',
+      }),
+    ];
+    const changedContent = serialize(changedBlocks);
+    act(() => {
+      editor.__experimentalOnChange(changedBlocks, {});
+      editor.onSaveContent(changedContent);
+    });
+    expect(onContentChange).toHaveBeenCalledTimes(2);
+    expect(onContentChange).toHaveBeenNthCalledWith(2, changedContent);
   });
 
-  it('renders an accessible locally described loading wrapper without save claims', () => {
+  it('renders an accessible control-free loading wrapper without visible loading or save claims', () => {
     const { container } = render(<PageNoteEditor {...createProps()} />);
     const region = screen.getByRole('region', {
       name: 'Page note editor',
     });
 
     expect(region).toHaveAttribute('aria-busy', 'true');
-    expect(region).toHaveAccessibleDescription(
-      'Write a private note using the available local text blocks.',
-    );
-    expect(screen.getByRole('status')).toHaveTextContent('Loading note editor');
+    expect(region).not.toHaveAccessibleDescription();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(container).not.toHaveTextContent(/saved|saving|autosave/u);
 
     act(() => {
@@ -1088,8 +1204,13 @@ describe('PageNoteEditor local theme contract', () => {
 
     expect(css).toContain('@media (prefers-color-scheme: dark)');
     expect(css).toContain(':focus-visible');
-    expect(css).toContain('@media (max-width: 320px)');
     expect(css).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(css).toContain('min-height: 10rem');
+    expect(css).toContain('height: auto !important');
+    expect(css).toContain('max-height: none !important');
+    expect(css).toContain('overflow: visible !important');
+    expect(css).toContain('border: 0');
+    expect(css).toContain('display: none !important');
     expect(css).not.toMatch(/url\(\s*['"]?https?:/u);
 
     const compactCss = css.replace(/\s+/gu, ' ');

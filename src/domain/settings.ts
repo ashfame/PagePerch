@@ -16,6 +16,7 @@ export interface ByosConnectionV1 {
 export interface SettingsRecordV1 {
   readonly schemaVersion: typeof SETTINGS_SCHEMA_VERSION;
   readonly editorMode: EditorMode;
+  readonly showRecentNotesOnOrigin: boolean;
   readonly pageIdentityExclusions: readonly PageIdentityExclusionRule[];
   readonly byosConnection?: ByosConnectionV1;
 }
@@ -32,5 +33,6 @@ export interface SettingsRecordV0 {
 export const DEFAULT_SETTINGS_V1: SettingsRecordV1 = Object.freeze({
   schemaVersion: SETTINGS_SCHEMA_VERSION,
   editorMode: 'text-focused-blocks',
+  showRecentNotesOnOrigin: false,
   pageIdentityExclusions: Object.freeze([]),
 });

@@ -84,6 +84,7 @@ describe('BYOS production client connectors', () => {
       [SETTINGS_STORAGE_KEY]: {
         schemaVersion: 1,
         editorMode: 'text-focused-blocks',
+        showRecentNotesOnOrigin: false,
         pageIdentityExclusions: [],
         byosConnection: {
           accessToken: 'oauth-access-token',

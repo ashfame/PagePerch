@@ -23,6 +23,7 @@ function settings(overrides: Partial<SettingsRecordV1> = {}): SettingsRecordV1 {
   return {
     schemaVersion: 1,
     editorMode: 'text-focused-blocks',
+    showRecentNotesOnOrigin: false,
     pageIdentityExclusions: [],
     ...overrides,
   };
@@ -98,6 +99,25 @@ describe('ChromeLocalSettingsRepository', () => {
     [
       'a malformed envelope',
       { schemaVersion: 1, editorMode: 'unknown' },
+      'malformed',
+    ],
+    [
+      'a v1 envelope missing the required recent-notes preference',
+      {
+        schemaVersion: 1,
+        editorMode: 'text-focused-blocks',
+        pageIdentityExclusions: [],
+      },
+      'malformed',
+    ],
+    [
+      'a v1 envelope with a non-boolean recent-notes preference',
+      {
+        schemaVersion: 1,
+        editorMode: 'text-focused-blocks',
+        showRecentNotesOnOrigin: 'yes',
+        pageIdentityExclusions: [],
+      },
       'malformed',
     ],
     [
@@ -189,6 +209,7 @@ describe('ChromeLocalSettingsRepository', () => {
 
   it('atomically updates only editor mode on the latest v1 record and returns a defensive clone', async () => {
     const latest = settings({
+      showRecentNotesOnOrigin: true,
       pageIdentityExclusions: [
         { origin: 'https://example.com', parameterNames: ['session'] },
       ],
@@ -221,6 +242,46 @@ describe('ChromeLocalSettingsRepository', () => {
         'mutated';
     }
     expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toEqual(expected);
+  });
+
+  it('atomically updates only the recent-notes preference on the latest v1 record', async () => {
+    const latest = settings({
+      editorMode: 'paragraphs-only',
+      pageIdentityExclusions: [
+        { origin: 'https://example.com', parameterNames: ['session'] },
+      ],
+      byosConnection: {
+        accessToken: 'latest-token',
+        expiresAt: '2026-08-01T11:59:00Z',
+        connectedAt: '2026-07-25T10:00:00Z',
+        lastSuccessfulSyncAt: '2026-07-25T10:10:00Z',
+      },
+    });
+    const storage = new InMemoryChromeStorage({
+      [SETTINGS_STORAGE_KEY]: latest,
+    });
+    const repository = new ChromeLocalSettingsRepository(storage);
+
+    const updated = await repository.updateShowRecentNotesOnOrigin(true);
+    const expected = { ...latest, showRecentNotesOnOrigin: true };
+
+    expect(updated).toEqual(expected);
+    expect(storage.snapshot()).toEqual({ [SETTINGS_STORAGE_KEY]: expected });
+    expect(storage.getCalls).toEqual([
+      [IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY, SETTINGS_STORAGE_KEY],
+    ]);
+    expect(storage.setCalls).toEqual([{ [SETTINGS_STORAGE_KEY]: expected }]);
+  });
+
+  it('rejects a non-boolean recent-notes preference before touching storage', async () => {
+    const storage = new InMemoryChromeStorage();
+    const repository = new ChromeLocalSettingsRepository(storage);
+
+    await expect(
+      repository.updateShowRecentNotesOnOrigin('yes' as unknown as boolean),
+    ).rejects.toBeInstanceOf(RepositoryValidationError);
+    expect(storage.getCalls).toEqual([]);
+    expect(storage.setCalls).toEqual([]);
   });
 
   it.each([

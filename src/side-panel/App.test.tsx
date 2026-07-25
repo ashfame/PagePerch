@@ -3,6 +3,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { SettingsRecordV1 } from '../domain/settings';
 import type {
   ActivePageSessionState,
   SupportedActivePageSessionState,
@@ -43,6 +44,15 @@ class FakeSessionController {
   emit(state: ActivePageSessionState): void {
     this.emitState(state);
   }
+}
+
+function panelSettings(showRecentNotesOnOrigin = false): SettingsRecordV1 {
+  return {
+    schemaVersion: 1,
+    editorMode: 'text-focused-blocks',
+    showRecentNotesOnOrigin,
+    pageIdentityExclusions: [],
+  };
 }
 
 class FakeDraftRuntime implements PageNoteDraftRuntime {
@@ -293,6 +303,8 @@ function renderApp(
     readonly draftPorts?: DraftTestPorts;
     readonly pageSyncVisibility?: PageSyncVisibility;
     readonly recentNotesPorts?: RecentNotesTestPorts;
+    readonly settingsGet?: () => Promise<SettingsRecordV1>;
+    readonly showRecentNotesOnOrigin?: boolean;
   } = {},
 ) {
   let controller: FakeSessionController | undefined;
@@ -309,6 +321,13 @@ function renderApp(
     options.recentNotesPorts ?? createRecentNotesTestPorts();
   const pageSyncVisibility =
     options.pageSyncVisibility ?? new FakePageSyncVisibility();
+  const settingsGet = vi.fn(
+    options.settingsGet ??
+      (() =>
+        Promise.resolve(
+          panelSettings(options.showRecentNotesOnOrigin ?? false),
+        )),
+  );
   const app = (
     <SidePanelApp
       createController={createController}
@@ -318,6 +337,7 @@ function renderApp(
       pageOpener={recentNotesPorts.opener}
       pageSyncVisibility={pageSyncVisibility}
       recentNotesIndex={recentNotesPorts.index}
+      settings={{ get: settingsGet }}
     />
   );
   const rendered = render(
@@ -336,6 +356,7 @@ function renderApp(
     createController,
     openSettings,
     pageSyncVisibility,
+    settingsGet,
     ...draftPorts,
     ...recentNotesPorts,
   };
@@ -397,7 +418,7 @@ function deferred<T>() {
 }
 
 describe('SidePanelApp session states', () => {
-  it('renders a branded loading state and keeps settings available', async () => {
+  it('renders a branded loading state with a right-aligned Settings control', async () => {
     const user = userEvent.setup();
     const { openSettings } = renderApp();
 
@@ -414,12 +435,10 @@ describe('SidePanelApp session states', () => {
       'Loading page details',
     );
     expect(
-      screen.getByText(
-        /editor safeguards, page identity behavior, and local storage boundaries/u,
-      ),
-    ).toBeInTheDocument();
+      screen.queryByRole('heading', { name: 'Preferences' }),
+    ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Open settings' }));
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
     expect(openSettings).toHaveBeenCalledOnce();
   });
 
@@ -485,30 +504,24 @@ describe('SidePanelApp session states', () => {
       ).toBeInTheDocument();
       expect(screen.getByRole('status')).toHaveTextContent(expectedMessage);
       expect(
-        screen.getByRole('button', { name: 'Open settings' }),
+        screen.getByRole('button', { name: 'Settings' }),
       ).toBeInTheDocument();
     },
   );
 
-  it('renders a supported page shell with title, canonical context, and cached-note loading status', () => {
+  it('renders a supported page shell without page context or loading copy', () => {
     const { controller } = renderApp();
 
     emit(controller, supportedSession());
 
-    expect(
-      screen.getByRole('heading', {
-        level: 2,
-        name: 'Notes for Example title',
-      }),
-    ).toBeInTheDocument();
-    expect(screen.getByText('/path?a=1')).toHaveAttribute(
-      'title',
-      'https://example.com/path?a=1',
+    expect(screen.queryByText('Page note')).not.toBeInTheDocument();
+    expect(screen.queryByText('Example title')).not.toBeInTheDocument();
+    expect(screen.queryByText('/path?a=1')).not.toBeInTheDocument();
+    expect(screen.queryByText('Loading cached note')).not.toBeInTheDocument();
+    expect(screen.getByTestId('page-document-shell')).toHaveAttribute(
+      'aria-busy',
+      'true',
     );
-    expect(screen.getByRole('status')).toHaveTextContent('Loading cached note');
-    expect(
-      screen.queryByText(/editor is not connected yet/u),
-    ).not.toBeInTheDocument();
   });
 
   it('renders actionable non-flush errors instead of the prior page shell', () => {
@@ -549,7 +562,7 @@ describe('SidePanelApp session states', () => {
       'PagePerch could not load page identity settings.',
     );
     expect(
-      screen.getByRole('button', { name: 'Open settings' }),
+      screen.getByRole('button', { name: 'Settings' }),
     ).toBeInTheDocument();
   });
 
@@ -569,12 +582,7 @@ describe('SidePanelApp session states', () => {
       'Save the previous note before switching pages.',
     );
     expect(screen.getByTestId('page-document-shell')).toBe(pageShell);
-    expect(
-      screen.getByRole('heading', {
-        level: 2,
-        name: 'Notes for Example title',
-      }),
-    ).toBeInTheDocument();
+    expect(screen.queryByText('Example title')).not.toBeInTheDocument();
   });
 
   it('preserves the shell for same-key metadata updates and remounts it for a new page key', () => {
@@ -590,12 +598,7 @@ describe('SidePanelApp session states', () => {
       }),
     );
     expect(screen.getByTestId('page-document-shell')).toBe(firstShell);
-    expect(
-      screen.getByRole('heading', {
-        level: 2,
-        name: 'Notes for Updated title',
-      }),
-    ).toBeInTheDocument();
+    expect(screen.queryByText('Updated title')).not.toBeInTheDocument();
 
     emit(
       controller,
@@ -612,7 +615,7 @@ describe('SidePanelApp session states', () => {
       }),
     );
     expect(screen.getByTestId('page-document-shell')).not.toBe(firstShell);
-    expect(screen.getByText('/other')).toBeInTheDocument();
+    expect(screen.queryByText('/other')).not.toBeInTheDocument();
   });
 });
 
@@ -628,7 +631,11 @@ describe('SidePanelApp local note composition', () => {
     expect(createDraftRuntime).toHaveBeenCalledOnce();
     expect(registerPendingSave).toHaveBeenCalledOnce();
     expect(drafts[0]?.start).toHaveBeenCalledOnce();
-    expect(screen.getByRole('status')).toHaveTextContent('Loading cached note');
+    expect(screen.getByTestId('page-document-shell')).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
+    expect(screen.queryByText('Loading cached note')).not.toBeInTheDocument();
     expect(
       screen.queryByTestId('fake-page-note-editor'),
     ).not.toBeInTheDocument();
@@ -1037,7 +1044,11 @@ describe('SidePanelApp local note composition', () => {
     expect(first.stop).toHaveBeenCalledOnce();
     expect(runtimes).toHaveLength(1);
     expect(draftPorts.unregisters[0]).not.toHaveBeenCalled();
-    expect(screen.getByRole('status')).toHaveTextContent('Loading cached note');
+    expect(screen.getByTestId('page-document-shell')).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
+    expect(screen.queryByText('Loading cached note')).not.toBeInTheDocument();
 
     emitDraft(
       first,
@@ -1299,7 +1310,11 @@ describe('SidePanelApp local note composition', () => {
 
     expect(draftPorts.createDraftRuntime).toHaveBeenCalledOnce();
     expect(runtime?.start).toHaveBeenCalledOnce();
-    expect(screen.getByRole('status')).toHaveTextContent('Loading cached note');
+    expect(screen.getByTestId('page-document-shell')).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
+    expect(screen.queryByText('Loading cached note')).not.toBeInTheDocument();
   });
 
   it('recovers a getState failure after same-key metadata update without replacing the owner', async () => {
@@ -1334,7 +1349,11 @@ describe('SidePanelApp local note composition', () => {
     expect(createDraftRuntime).toHaveBeenCalledOnce();
     expect(runtime.start).toHaveBeenCalledOnce();
     expect(runtime.updatePageContext).toHaveBeenCalledOnce();
-    expect(screen.getByRole('status')).toHaveTextContent('Loading cached note');
+    expect(screen.getByTestId('page-document-shell')).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
+    expect(screen.queryByText('Loading cached note')).not.toBeInTheDocument();
   });
 
   it('observes rejected retry callbacks after navigation without stale updates or unhandled rejections', async () => {
@@ -1393,12 +1412,67 @@ describe('SidePanelApp local note composition', () => {
 });
 
 describe('SidePanelApp recent origin notes', () => {
-  it('renders the index only for a supported root page and starts with an accessible loading state', () => {
+  it('does not connect or render the recent index while the opt-in is off', async () => {
     const recentIndex = new FakeRootRecentNotesIndex();
     const recentNotesPorts = createRecentNotesTestPorts({
       index: recentIndex,
     });
-    const { controller } = renderApp({ recentNotesPorts });
+    const { controller, unmount } = renderApp({
+      recentNotesPorts,
+      strict: true,
+    });
+    await settleReact();
+
+    emit(controller, rootSupportedSession());
+    await settleReact();
+    unmount();
+    await settleReact();
+
+    expect(recentIndex.connect).not.toHaveBeenCalled();
+    expect(recentIndex.setSession).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('heading', {
+        name: 'Recent notes on this origin',
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps the recent index disabled when settings cannot be loaded', async () => {
+    const recentIndex = new FakeRootRecentNotesIndex();
+    const recentNotesPorts = createRecentNotesTestPorts({
+      index: recentIndex,
+    });
+    const { controller, unmount } = renderApp({
+      recentNotesPorts,
+      settingsGet: () => Promise.reject(new Error('settings unavailable')),
+      strict: true,
+    });
+    await settleReact();
+
+    emit(controller, rootSupportedSession());
+    await settleReact();
+    unmount();
+    await settleReact();
+
+    expect(recentIndex.connect).not.toHaveBeenCalled();
+    expect(recentIndex.setSession).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('heading', {
+        name: 'Recent notes on this origin',
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders the opted-in index only for a supported root page and starts with an accessible loading state', async () => {
+    const recentIndex = new FakeRootRecentNotesIndex();
+    const recentNotesPorts = createRecentNotesTestPorts({
+      index: recentIndex,
+    });
+    const { controller } = renderApp({
+      recentNotesPorts,
+      showRecentNotesOnOrigin: true,
+    });
+    await settleReact();
 
     emit(controller, supportedSession());
     expect(
@@ -1429,7 +1503,11 @@ describe('SidePanelApp recent origin notes', () => {
     const recentNotesPorts = createRecentNotesTestPorts({
       index: recentIndex,
     });
-    const { controller } = renderApp({ recentNotesPorts });
+    const { controller } = renderApp({
+      recentNotesPorts,
+      showRecentNotesOnOrigin: true,
+    });
+    await settleReact();
     const root = rootSupportedSession();
     emit(controller, root);
 
@@ -1504,7 +1582,11 @@ describe('SidePanelApp recent origin notes', () => {
     const recentNotesPorts = createRecentNotesTestPorts({
       index: recentIndex,
     });
-    const { controller, drafts } = renderApp({ recentNotesPorts });
+    const { controller, drafts } = renderApp({
+      recentNotesPorts,
+      showRecentNotesOnOrigin: true,
+    });
+    await settleReact();
     const root = rootSupportedSession();
     emit(controller, root);
     await settleReact();
@@ -1591,7 +1673,11 @@ describe('SidePanelApp recent origin notes', () => {
     const recentNotesPorts = createRecentNotesTestPorts({
       index: recentIndex,
     });
-    const { controller } = renderApp({ recentNotesPorts });
+    const { controller } = renderApp({
+      recentNotesPorts,
+      showRecentNotesOnOrigin: true,
+    });
+    await settleReact();
     const root = rootSupportedSession();
     emit(controller, root);
     act(() => {
@@ -1638,12 +1724,16 @@ describe('SidePanelApp recent origin notes', () => {
     expect(recentNotesPorts.openCanonicalUrl).toHaveBeenCalledTimes(3);
   });
 
-  it('filters stale root state across root and non-root navigation', () => {
+  it('filters stale root state across root and non-root navigation', async () => {
     const recentIndex = new FakeRootRecentNotesIndex();
     const recentNotesPorts = createRecentNotesTestPorts({
       index: recentIndex,
     });
-    const { controller } = renderApp({ recentNotesPorts });
+    const { controller } = renderApp({
+      recentNotesPorts,
+      showRecentNotesOnOrigin: true,
+    });
+    await settleReact();
     const firstRoot = rootSupportedSession();
     emit(controller, firstRoot);
     act(() => {
@@ -1715,6 +1805,7 @@ describe('SidePanelApp recent origin notes', () => {
     const recentNotesPorts = createRecentNotesTestPorts({ index });
     const { controller, unmount } = renderApp({
       recentNotesPorts,
+      showRecentNotesOnOrigin: true,
       strict: true,
     });
 
@@ -1778,6 +1869,7 @@ describe('SidePanelApp controller lifecycle', () => {
         openSettings={openSettings}
         pageOpener={recentNotesPorts.opener}
         recentNotesIndex={recentNotesPorts.index}
+        settings={{ get: () => Promise.resolve(panelSettings()) }}
       />,
     );
 
@@ -1793,6 +1885,7 @@ describe('SidePanelApp controller lifecycle', () => {
         openSettings={openSettings}
         pageOpener={recentNotesPorts.opener}
         recentNotesIndex={recentNotesPorts.index}
+        settings={{ get: () => Promise.resolve(panelSettings()) }}
       />,
     );
 
@@ -1807,9 +1900,8 @@ describe('SidePanelApp controller lifecycle', () => {
       screen.queryByText('Notes for Stale first runtime'),
     ).not.toBeInTheDocument();
     emit(secondController, supportedSession({ title: 'Replacement runtime' }));
-    expect(
-      screen.getByText('Notes for Replacement runtime'),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId('page-document-shell')).toBeInTheDocument();
+    expect(screen.queryByText('Replacement runtime')).not.toBeInTheDocument();
 
     await act(async () => {
       await Promise.resolve();
@@ -1835,6 +1927,7 @@ describe('SidePanelApp controller lifecycle', () => {
         openSettings={vi.fn()}
         pageOpener={recentNotesPorts.opener}
         recentNotesIndex={recentNotesPorts.index}
+        settings={{ get: () => Promise.resolve(panelSettings()) }}
       />,
     );
 
@@ -1864,6 +1957,7 @@ describe('SidePanelApp controller lifecycle', () => {
         openSettings={vi.fn()}
         pageOpener={recentNotesPorts.opener}
         recentNotesIndex={recentNotesPorts.index}
+        settings={{ get: () => Promise.resolve(panelSettings()) }}
       />,
     );
 
@@ -1899,15 +1993,12 @@ describe('SidePanelApp controller lifecycle', () => {
         openSettings={vi.fn()}
         pageOpener={recentNotesPorts.opener}
         recentNotesIndex={recentNotesPorts.index}
+        settings={{ get: () => Promise.resolve(panelSettings()) }}
       />,
     );
 
-    expect(
-      screen.getByRole('heading', {
-        level: 2,
-        name: 'Notes for Synchronous startup',
-      }),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId('page-document-shell')).toBeInTheDocument();
+    expect(screen.queryByText('Synchronous startup')).not.toBeInTheDocument();
     expect(start).toHaveBeenCalledOnce();
   });
 
@@ -1957,6 +2048,7 @@ describe('SidePanelApp controller lifecycle', () => {
         openSettings={vi.fn()}
         pageOpener={recentNotesPorts.opener}
         recentNotesIndex={recentNotesPorts.index}
+        settings={{ get: () => Promise.resolve(panelSettings()) }}
       />,
     );
     const firstController = controllers[0];
@@ -1970,6 +2062,7 @@ describe('SidePanelApp controller lifecycle', () => {
         openSettings={vi.fn()}
         pageOpener={recentNotesPorts.opener}
         recentNotesIndex={recentNotesPorts.index}
+        settings={{ get: () => Promise.resolve(panelSettings()) }}
       />,
     );
     const secondController = controllers[1];
@@ -2003,7 +2096,7 @@ describe('SidePanelApp settings navigation', () => {
       .mockImplementationOnce(() => undefined);
     const user = userEvent.setup();
     renderApp({ openSettings });
-    const button = screen.getByRole('button', { name: 'Open settings' });
+    const button = screen.getByRole('button', { name: 'Settings' });
 
     await user.click(button);
     expect(screen.getByRole('alert')).toHaveTextContent(
@@ -2030,7 +2123,7 @@ describe('SidePanelApp settings navigation', () => {
         .mockResolvedValueOnce();
       const user = userEvent.setup();
       renderApp({ openSettings });
-      const button = screen.getByRole('button', { name: 'Open settings' });
+      const button = screen.getByRole('button', { name: 'Settings' });
 
       await user.click(button);
       expect(await screen.findByRole('alert')).toHaveTextContent(

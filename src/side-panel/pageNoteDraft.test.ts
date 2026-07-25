@@ -146,6 +146,7 @@ function createHarness(
     readonly getSettings?: () => Promise<{
       readonly schemaVersion: 1;
       readonly editorMode: 'text-focused-blocks' | 'paragraphs-only';
+      readonly showRecentNotesOnOrigin: boolean;
       readonly pageIdentityExclusions: readonly [];
     }>;
     readonly context?: PageNoteDraftPageContext;
@@ -176,6 +177,7 @@ function createHarness(
         Promise.resolve({
           schemaVersion: 1 as const,
           editorMode: 'text-focused-blocks' as const,
+          showRecentNotesOnOrigin: false,
           pageIdentityExclusions: [] as const,
         })),
   );
@@ -217,6 +219,7 @@ describe('PageNoteDraftController loading', () => {
     const settings = deferred<{
       readonly schemaVersion: 1;
       readonly editorMode: 'paragraphs-only';
+      readonly showRecentNotesOnOrigin: boolean;
       readonly pageIdentityExclusions: readonly [];
     }>();
     const harness = createHarness({
@@ -239,6 +242,7 @@ describe('PageNoteDraftController loading', () => {
     settings.resolve({
       schemaVersion: 1,
       editorMode: 'paragraphs-only',
+      showRecentNotesOnOrigin: false,
       pageIdentityExclusions: [],
     });
     await first;
@@ -323,6 +327,7 @@ describe('PageNoteDraftController loading', () => {
         Promise.resolve({
           schemaVersion: 1,
           editorMode: 'unknown' as never,
+          showRecentNotesOnOrigin: false,
           pageIdentityExclusions: [],
         }),
     });

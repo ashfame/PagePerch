@@ -44,6 +44,7 @@ function settings(overrides: Partial<SettingsRecordV1> = {}): SettingsRecordV1 {
   return {
     schemaVersion: 1,
     editorMode: 'text-focused-blocks',
+    showRecentNotesOnOrigin: false,
     pageIdentityExclusions: [],
     ...overrides,
   };
@@ -83,6 +84,9 @@ interface Harness {
   readonly updateEditorMode: ReturnType<
     typeof vi.fn<(editorMode: EditorMode) => Promise<SettingsRecordV1>>
   >;
+  readonly updateShowRecentNotesOnOrigin: ReturnType<
+    typeof vi.fn<(show: boolean) => Promise<SettingsRecordV1>>
+  >;
   readonly start: ReturnType<
     typeof vi.fn<
       (
@@ -108,6 +112,10 @@ function harness(
     stored = { ...stored, editorMode };
     return Promise.resolve(cloneSettings(stored));
   });
+  const updateShowRecentNotesOnOrigin = vi.fn((show: boolean) => {
+    stored = { ...stored, showRecentNotesOnOrigin: show };
+    return Promise.resolve(cloneSettings(stored));
+  });
   const start = vi.fn((value: SettingsRecordV1) => {
     stored = cloneSettings(value);
     return Promise.resolve({
@@ -123,6 +131,7 @@ function harness(
     stored = {
       schemaVersion: stored.schemaVersion,
       editorMode: stored.editorMode,
+      showRecentNotesOnOrigin: stored.showRecentNotesOnOrigin,
       pageIdentityExclusions: stored.pageIdentityExclusions,
     };
     return Promise.resolve();
@@ -159,7 +168,11 @@ function harness(
       },
       migration: { start },
       pendingSyncCount,
-      settings: { get, updateEditorMode },
+      settings: {
+        get,
+        updateEditorMode,
+        updateShowRecentNotesOnOrigin,
+      },
       syncMessages: { invalidateCredentials, request },
     },
     disconnect,
@@ -168,6 +181,7 @@ function harness(
     pendingSyncCount,
     request,
     updateEditorMode,
+    updateShowRecentNotesOnOrigin,
     start,
   };
 }
@@ -291,6 +305,100 @@ describe('OptionsApp', () => {
       'Editor mode saved.',
     );
     expect(testHarness.updateEditorMode).toHaveBeenCalledTimes(2);
+  });
+
+  it('loads the recent-notes opt-in off by default and saves it atomically', async () => {
+    const user = userEvent.setup();
+    const current = settings({
+      pageIdentityExclusions: [
+        { origin: 'https://example.com', parameterNames: ['session'] },
+      ],
+      byosConnection: {
+        accessToken: 'preserved-token',
+        connectedAt: '2026-07-25T10:00:00Z',
+        expiresAt: '2026-08-01T10:00:00Z',
+      },
+    });
+    const testHarness = harness(current);
+    await renderReady(testHarness);
+    const checkbox = screen.getByRole('checkbox', {
+      name: /show recent notes on root pages/iu,
+    });
+
+    expect(checkbox).not.toBeChecked();
+    await user.click(checkbox);
+
+    expect(testHarness.updateShowRecentNotesOnOrigin).toHaveBeenCalledWith(
+      true,
+    );
+    expect(testHarness.current()).toEqual({
+      ...current,
+      showRecentNotesOnOrigin: true,
+    });
+    expect(checkbox).toBeChecked();
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Recent-notes preference saved.',
+    );
+  });
+
+  it('retains the recent-notes preference after a failed save and allows retry', async () => {
+    const user = userEvent.setup();
+    const testHarness = harness();
+    testHarness.updateShowRecentNotesOnOrigin.mockRejectedValueOnce(
+      new Error('write failed'),
+    );
+    await renderReady(testHarness);
+    const checkbox = screen.getByRole('checkbox', {
+      name: /show recent notes on root pages/iu,
+    });
+
+    await user.click(checkbox);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Recent-notes preference could not be saved. Retry.',
+    );
+    expect(checkbox).not.toBeChecked();
+    expect(checkbox).toBeEnabled();
+
+    await user.click(checkbox);
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Recent-notes preference saved.',
+    );
+    expect(checkbox).toBeChecked();
+    expect(testHarness.updateShowRecentNotesOnOrigin).toHaveBeenCalledTimes(2);
+  });
+
+  it('disables editor preferences while a recent-notes save is pending', async () => {
+    const user = userEvent.setup();
+    const testHarness = harness();
+    let resolveSave: ((settings: SettingsRecordV1) => void) | undefined;
+    testHarness.updateShowRecentNotesOnOrigin.mockImplementationOnce(
+      () =>
+        new Promise<SettingsRecordV1>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    await renderReady(testHarness);
+    const checkbox = screen.getByRole('checkbox', {
+      name: /show recent notes on root pages/iu,
+    });
+    const editorMode = screen.getByRole('combobox', { name: 'Editor mode' });
+
+    await user.click(checkbox);
+
+    expect(checkbox).toBeDisabled();
+    expect(editorMode).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Saving recent-notes preference…',
+    );
+
+    await act(async () => {
+      resolveSave?.(settings({ showRecentNotesOnOrigin: true }));
+      await Promise.resolve();
+    });
+    expect(checkbox).toBeChecked();
+    expect(checkbox).toBeEnabled();
+    expect(editorMode).toBeEnabled();
   });
 
   it('atomically applies an editor mode to settings completed by recovery after the UI loaded a stale snapshot', async () => {
@@ -689,6 +797,7 @@ describe('OptionsApp', () => {
     expect(testHarness.current()).toEqual({
       schemaVersion: 1,
       editorMode: 'paragraphs-only',
+      showRecentNotesOnOrigin: false,
       pageIdentityExclusions: initial.pageIdentityExclusions,
     });
   });
