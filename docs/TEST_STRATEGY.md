@@ -4,10 +4,10 @@
 
 - Unit tests cover canonicalization, exclusion matching, hashing, root detection, content normalization, record comparison, PKCE primitives, validators, schema migrations, queue coalescing, and retry scheduling with injected clocks and randomness.
 - Repository and service tests run against a faithful in-memory mock of `chrome.storage.local` and `chrome.storage.session`, including change events, error paths, large Gutenberg documents, restart reconstruction, and migrations.
-- React component tests use React Testing Library with explicit fake timers and `matchMedia`, Chrome API, and service mocks to verify user-visible state, keyboard behavior, focus, automatic theme changes, navigation, and BYOS controls.
+- React component tests use React Testing Library with explicit fake timers and `matchMedia`, Chrome API, and service mocks to verify user-visible state, keyboard behavior, focus, automatic theme changes, navigation, root-index loading/refresh/open failures, and BYOS controls.
 - Transport tests mock `fetch` and AWS SDK request handling while asserting exact OAuth form fields, scope, path-style S3 configuration, deterministic keys, credential lifetime, and partial failure behavior without making production requests.
 - Production-package tests parse the manifest and emitted HTML/JavaScript/CSS to reject undeclared resources, external executable URLs, unsafe evaluation, source maps, accidental credentials, unstable filenames, and missing files.
-- Playwright launches the unpacked production extension under Chromium/Xvfb. Current coverage verifies options, service-worker startup, the unsupported panel state, and a real editable Gutenberg surface for a routed supported HTTPS tab at 280 pixels without fatal or duplicate-store errors; later slices add navigation, restart persistence, and exact-origin root indexing.
+- Playwright launches the unpacked production extension under Chromium/Xvfb. Current coverage verifies options, service-worker startup, the unsupported panel state, and a real editable Gutenberg surface for a routed supported HTTPS tab at 280 pixels without fatal or duplicate-store errors; later slices add navigation, restart persistence, and the complete packaged storage-change-to-root-index-to-new-tab flow.
 
 ## Required Gates
 
@@ -15,7 +15,7 @@
 
 ## Coverage Priorities
 
-Acceptance-critical branches require direct tests: unsupported schemes; global/custom exclusion scope; duplicate queries; identity collisions; unchanged saves; untouched-empty clears; tombstones; exact timestamp conflicts; expired OAuth; state mismatch; one-time secret disposal; local-newer and remote-newer reconciliation; failed upload coalescing; restart recovery; disconnect/reconnect; missing client configuration; and dark/light live changes.
+Acceptance-critical branches require direct tests: unsupported schemes; global/custom exclusion scope; duplicate queries; identity collisions; unchanged saves; untouched-empty clears; tombstones; root-only exact-origin indexing and canonical opening; exact timestamp conflicts; expired OAuth; state mismatch; one-time secret disposal; local-newer and remote-newer reconciliation; failed upload coalescing; restart recovery; disconnect/reconnect; missing client configuration; and dark/light live changes.
 
 ## Determinism
 

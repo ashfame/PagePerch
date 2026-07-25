@@ -8,6 +8,7 @@ import type {
   SupportedActivePageSessionState,
 } from './activePageSession';
 import { SidePanelApp, type CreateActivePageSessionController } from './App';
+import type { CanonicalPageOpener } from './chromeCanonicalPageOpener';
 import type { PageNoteEditorProps } from './PageNoteEditor';
 import type {
   PageNoteDraftPageContext,
@@ -19,6 +20,12 @@ import {
   type PageNoteDraftRuntime,
   type RegisterPendingPageSave,
 } from './pageNoteOwnership';
+import {
+  DefaultRootRecentNotesIndex,
+  type RootRecentNotesConnection,
+  type RootRecentNotesIndex,
+  type RootRecentNotesState,
+} from './rootRecentNotes';
 
 class FakeSessionController {
   readonly stop = vi.fn();
@@ -115,6 +122,54 @@ interface DraftTestPorts {
   readonly currentPendingHandler: () => (() => Promise<void>) | undefined;
 }
 
+class FakeRootRecentNotesIndex implements RootRecentNotesIndex {
+  readonly setSession = vi.fn();
+  readonly retry = vi.fn();
+  readonly disconnect = vi.fn();
+  readonly connect = vi.fn(
+    (
+      emitState: (state: RootRecentNotesState | undefined) => void,
+    ): RootRecentNotesConnection => {
+      this.emitState = emitState;
+
+      return {
+        disconnect: this.disconnect,
+        retry: this.retry,
+        setSession: this.setSession,
+      };
+    },
+  );
+  private emitState:
+    ((state: RootRecentNotesState | undefined) => void) | undefined;
+
+  emit(state: RootRecentNotesState | undefined): void {
+    this.emitState?.(state);
+  }
+}
+
+interface RecentNotesTestPorts {
+  readonly index: RootRecentNotesIndex;
+  readonly opener: CanonicalPageOpener;
+  readonly openCanonicalUrl: ReturnType<
+    typeof vi.fn<CanonicalPageOpener['openCanonicalUrl']>
+  >;
+}
+
+function createRecentNotesTestPorts(options?: {
+  readonly index?: RootRecentNotesIndex;
+  readonly openCanonicalUrl?: CanonicalPageOpener['openCanonicalUrl'];
+}): RecentNotesTestPorts {
+  const openCanonicalUrl = vi.fn<CanonicalPageOpener['openCanonicalUrl']>(
+    options?.openCanonicalUrl ?? (() => Promise.resolve()),
+  );
+
+  return {
+    index: options?.index ?? new FakeRootRecentNotesIndex(),
+    opener: { openCanonicalUrl },
+    openCanonicalUrl,
+  };
+}
+
 function createDraftTestPorts(options?: {
   readonly createDraftRuntime?: CreatePageNoteDraftRuntime;
   readonly registerPendingSave?: RegisterPendingPageSave;
@@ -185,11 +240,30 @@ function supportedSession(
   };
 }
 
+function rootSupportedSession(
+  overrides: Partial<SupportedActivePageSessionState> = {},
+): SupportedActivePageSessionState {
+  return {
+    ...supportedSession(),
+    representativeUrl: 'https://example.com/',
+    title: 'Example origin',
+    identity: {
+      canonicalUrl: 'https://example.com/',
+      isRoot: true,
+      origin: 'https://example.com',
+      pageKey: 'R'.repeat(43),
+      pathname: '/',
+    },
+    ...overrides,
+  };
+}
+
 function renderApp(
   options: {
     readonly strict?: boolean;
     readonly openSettings?: () => void | Promise<void>;
     readonly draftPorts?: DraftTestPorts;
+    readonly recentNotesPorts?: RecentNotesTestPorts;
   } = {},
 ) {
   let controller: FakeSessionController | undefined;
@@ -202,12 +276,16 @@ function renderApp(
   );
   const openSettings = vi.fn(options.openSettings ?? (() => undefined));
   const draftPorts = options.draftPorts ?? createDraftTestPorts();
+  const recentNotesPorts =
+    options.recentNotesPorts ?? createRecentNotesTestPorts();
   const app = (
     <SidePanelApp
       createController={createController}
       draftOwnership={draftPorts.ownership}
       Editor={draftPorts.Editor}
       openSettings={openSettings}
+      pageOpener={recentNotesPorts.opener}
+      recentNotesIndex={recentNotesPorts.index}
     />
   );
   const rendered = render(
@@ -226,6 +304,7 @@ function renderApp(
     createController,
     openSettings,
     ...draftPorts,
+    ...recentNotesPorts,
   };
 }
 
@@ -1087,6 +1166,344 @@ describe('SidePanelApp local note composition', () => {
   });
 });
 
+describe('SidePanelApp recent origin notes', () => {
+  it('renders the index only for a supported root page and starts with an accessible loading state', () => {
+    const recentIndex = new FakeRootRecentNotesIndex();
+    const recentNotesPorts = createRecentNotesTestPorts({
+      index: recentIndex,
+    });
+    const { controller } = renderApp({ recentNotesPorts });
+
+    emit(controller, supportedSession());
+    expect(
+      screen.queryByRole('heading', {
+        name: 'Recent notes on this origin',
+      }),
+    ).not.toBeInTheDocument();
+
+    const root = rootSupportedSession();
+    emit(controller, root);
+
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'Recent notes on this origin',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Loading recent notes')).toHaveAttribute(
+      'role',
+      'status',
+    );
+    expect(recentIndex.setSession).toHaveBeenLastCalledWith(root);
+  });
+
+  it('renders empty and ready lists with title fallback, canonical context, semantic saved time, and canonical new-tab navigation', async () => {
+    const user = userEvent.setup();
+    const recentIndex = new FakeRootRecentNotesIndex();
+    const recentNotesPorts = createRecentNotesTestPorts({
+      index: recentIndex,
+    });
+    const { controller } = renderApp({ recentNotesPorts });
+    const root = rootSupportedSession();
+    emit(controller, root);
+
+    act(() => {
+      recentIndex.emit({
+        entries: [],
+        pageKey: root.identity.pageKey,
+        refreshError: false,
+        refreshing: false,
+        status: 'ready',
+        subscriptionError: false,
+      });
+    });
+    expect(
+      screen.getByText('No other saved notes on this origin yet.'),
+    ).toHaveAttribute('role', 'status');
+
+    const savedAt = '2026-07-25T08:00:00.000Z';
+    act(() => {
+      recentIndex.emit({
+        entries: [
+          {
+            canonicalUrl: 'https://example.com/article?view=notes',
+            pageKey: 'A'.repeat(43),
+            savedAt,
+            title: 'Saved article',
+          },
+          {
+            canonicalUrl: 'https://example.com/fallback?mode=read',
+            pageKey: 'B'.repeat(43),
+            savedAt: '2026-07-24T08:00:00.000Z',
+            title: '   ',
+          },
+        ],
+        pageKey: root.identity.pageKey,
+        refreshError: false,
+        refreshing: false,
+        status: 'ready',
+        subscriptionError: false,
+      });
+    });
+
+    expect(screen.getByRole('list')).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Saved article' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', {
+        level: 3,
+        name: '/fallback?mode=read',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('/article?view=notes')).toBeInTheDocument();
+    expect(
+      document.querySelector(`time[datetime="${savedAt}"]`),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Open Saved article in new tab',
+      }),
+    );
+    expect(recentNotesPorts.openCanonicalUrl).toHaveBeenCalledWith(
+      'https://example.com/article?view=notes',
+    );
+  });
+
+  it('renders actionable initial and retained refresh errors without blocking the editor', async () => {
+    const user = userEvent.setup();
+    const recentIndex = new FakeRootRecentNotesIndex();
+    const recentNotesPorts = createRecentNotesTestPorts({
+      index: recentIndex,
+    });
+    const { controller, drafts } = renderApp({ recentNotesPorts });
+    const root = rootSupportedSession();
+    emit(controller, root);
+    await settleReact();
+    const draft = drafts[0];
+
+    if (draft === undefined) {
+      throw new Error('Expected the root draft runtime.');
+    }
+
+    emitDraft(draft, readyDraftState());
+    act(() => {
+      recentIndex.emit({
+        loadError: true,
+        pageKey: root.identity.pageKey,
+        status: 'error',
+        subscriptionError: false,
+      });
+    });
+
+    expect(screen.getByTestId('fake-page-note-editor')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'could not load recent notes',
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Retry recent notes' }),
+    );
+    expect(recentIndex.retry).toHaveBeenCalledOnce();
+
+    act(() => {
+      recentIndex.emit({
+        entries: [
+          {
+            canonicalUrl: 'https://example.com/retained',
+            pageKey: 'A'.repeat(43),
+            savedAt: '2026-07-25T08:00:00.000Z',
+            title: 'Retained note',
+          },
+        ],
+        pageKey: root.identity.pageKey,
+        refreshError: true,
+        refreshing: false,
+        status: 'ready',
+        subscriptionError: false,
+      });
+    });
+
+    expect(screen.getByText('Retained note')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Previously loaded notes are still shown',
+    );
+    expect(screen.getByTestId('fake-page-note-editor')).toBeInTheDocument();
+
+    act(() => {
+      recentIndex.emit({
+        entries: [
+          {
+            canonicalUrl: 'https://example.com/retained',
+            pageKey: 'A'.repeat(43),
+            savedAt: '2026-07-25T08:00:00.000Z',
+            title: 'Retained note',
+          },
+        ],
+        pageKey: root.identity.pageKey,
+        refreshError: false,
+        refreshing: false,
+        status: 'ready',
+        subscriptionError: true,
+      });
+    });
+
+    expect(screen.getByText('Retained note')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'cannot update automatically',
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Retry recent notes' }),
+    );
+    expect(recentIndex.retry).toHaveBeenCalledTimes(2);
+  });
+
+  it('observes rejected and synchronous new-tab failures with per-entry retry feedback', async () => {
+    const user = userEvent.setup();
+    const recentIndex = new FakeRootRecentNotesIndex();
+    const recentNotesPorts = createRecentNotesTestPorts({
+      index: recentIndex,
+    });
+    const { controller } = renderApp({ recentNotesPorts });
+    const root = rootSupportedSession();
+    emit(controller, root);
+    act(() => {
+      recentIndex.emit({
+        entries: [
+          {
+            canonicalUrl: 'https://example.com/failing',
+            pageKey: 'F'.repeat(43),
+            savedAt: '2026-07-25T08:00:00.000Z',
+            title: 'Failing note',
+          },
+        ],
+        pageKey: root.identity.pageKey,
+        refreshError: false,
+        refreshing: false,
+        status: 'ready',
+        subscriptionError: false,
+      });
+    });
+    const openButton = screen.getByRole('button', {
+      name: 'Open Failing note in new tab',
+    });
+    recentNotesPorts.openCanonicalUrl.mockRejectedValueOnce(
+      new Error('rejected open'),
+    );
+
+    await user.click(openButton);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'could not open this saved page',
+    );
+
+    recentNotesPorts.openCanonicalUrl.mockImplementationOnce(() => {
+      throw new Error('synchronous open');
+    });
+    await user.click(openButton);
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'could not open this saved page',
+    );
+
+    await user.click(openButton);
+    await waitFor(() => {
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+    expect(recentNotesPorts.openCanonicalUrl).toHaveBeenCalledTimes(3);
+  });
+
+  it('filters stale root state across root and non-root navigation', () => {
+    const recentIndex = new FakeRootRecentNotesIndex();
+    const recentNotesPorts = createRecentNotesTestPorts({
+      index: recentIndex,
+    });
+    const { controller } = renderApp({ recentNotesPorts });
+    const firstRoot = rootSupportedSession();
+    emit(controller, firstRoot);
+    act(() => {
+      recentIndex.emit({
+        entries: [
+          {
+            canonicalUrl: 'https://example.com/old',
+            pageKey: 'A'.repeat(43),
+            savedAt: '2026-07-25T08:00:00.000Z',
+            title: 'Old root entry',
+          },
+        ],
+        pageKey: firstRoot.identity.pageKey,
+        refreshError: false,
+        refreshing: false,
+        status: 'ready',
+        subscriptionError: false,
+      });
+    });
+    const secondRoot = rootSupportedSession({
+      representativeUrl: 'https://other.example/',
+      identity: {
+        canonicalUrl: 'https://other.example/',
+        isRoot: true,
+        origin: 'https://other.example',
+        pageKey: 'S'.repeat(43),
+        pathname: '/',
+      },
+    });
+
+    emit(controller, secondRoot);
+    act(() => {
+      recentIndex.emit({
+        entries: [
+          {
+            canonicalUrl: 'https://example.com/stale',
+            pageKey: 'B'.repeat(43),
+            savedAt: '2026-07-25T08:00:00.000Z',
+            title: 'Stale old root entry',
+          },
+        ],
+        pageKey: firstRoot.identity.pageKey,
+        refreshError: false,
+        refreshing: false,
+        status: 'ready',
+        subscriptionError: false,
+      });
+    });
+
+    expect(screen.getByText('Loading recent notes')).toBeInTheDocument();
+    expect(screen.queryByText('Stale old root entry')).not.toBeInTheDocument();
+
+    emit(controller, supportedSession());
+    expect(
+      screen.queryByRole('heading', {
+        name: 'Recent notes on this origin',
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('uses one logical index subscription and initial query through the React StrictMode probe', async () => {
+    const listRecentByOrigin = vi.fn(() => Promise.resolve([]));
+    const unsubscribe = vi.fn();
+    const subscribe = vi.fn(() => unsubscribe);
+    const index = new DefaultRootRecentNotesIndex(
+      { listRecentByOrigin },
+      { subscribe },
+    );
+    const recentNotesPorts = createRecentNotesTestPorts({ index });
+    const { controller, unmount } = renderApp({
+      recentNotesPorts,
+      strict: true,
+    });
+
+    emit(controller, rootSupportedSession());
+    await settleReact();
+
+    expect(listRecentByOrigin).toHaveBeenCalledOnce();
+    expect(subscribe).toHaveBeenCalledOnce();
+
+    unmount();
+    await settleReact();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+});
+
 describe('SidePanelApp controller lifecycle', () => {
   it('creates and starts one controller through the StrictMode effect probe, then stops it on unmount', async () => {
     const { controller, createController, unmount } = renderApp({
@@ -1126,12 +1543,15 @@ describe('SidePanelApp controller lifecycle', () => {
     );
     const openSettings = vi.fn();
     const draftPorts = createDraftTestPorts();
+    const recentNotesPorts = createRecentNotesTestPorts();
     const { rerender } = render(
       <SidePanelApp
         createController={firstFactory}
         draftOwnership={draftPorts.ownership}
         Editor={draftPorts.Editor}
         openSettings={openSettings}
+        pageOpener={recentNotesPorts.opener}
+        recentNotesIndex={recentNotesPorts.index}
       />,
     );
 
@@ -1145,6 +1565,8 @@ describe('SidePanelApp controller lifecycle', () => {
         draftOwnership={draftPorts.ownership}
         Editor={draftPorts.Editor}
         openSettings={openSettings}
+        pageOpener={recentNotesPorts.opener}
+        recentNotesIndex={recentNotesPorts.index}
       />,
     );
 
@@ -1178,12 +1600,15 @@ describe('SidePanelApp controller lifecycle', () => {
     });
 
     const draftPorts = createDraftTestPorts();
+    const recentNotesPorts = createRecentNotesTestPorts();
     render(
       <SidePanelApp
         createController={createController}
         draftOwnership={draftPorts.ownership}
         Editor={draftPorts.Editor}
         openSettings={vi.fn()}
+        pageOpener={recentNotesPorts.opener}
+        recentNotesIndex={recentNotesPorts.index}
       />,
     );
 
@@ -1204,12 +1629,15 @@ describe('SidePanelApp controller lifecycle', () => {
     }));
 
     const draftPorts = createDraftTestPorts();
+    const recentNotesPorts = createRecentNotesTestPorts();
     render(
       <SidePanelApp
         createController={createController}
         draftOwnership={draftPorts.ownership}
         Editor={draftPorts.Editor}
         openSettings={vi.fn()}
+        pageOpener={recentNotesPorts.opener}
+        recentNotesIndex={recentNotesPorts.index}
       />,
     );
 
@@ -1236,12 +1664,15 @@ describe('SidePanelApp controller lifecycle', () => {
     );
 
     const draftPorts = createDraftTestPorts();
+    const recentNotesPorts = createRecentNotesTestPorts();
     render(
       <SidePanelApp
         createController={createController}
         draftOwnership={draftPorts.ownership}
         Editor={draftPorts.Editor}
         openSettings={vi.fn()}
+        pageOpener={recentNotesPorts.opener}
+        recentNotesIndex={recentNotesPorts.index}
       />,
     );
 
@@ -1291,12 +1722,15 @@ describe('SidePanelApp controller lifecycle', () => {
       },
     );
     const draftPorts = createDraftTestPorts();
+    const recentNotesPorts = createRecentNotesTestPorts();
     const firstMount = render(
       <SidePanelApp
         createController={createController}
         draftOwnership={draftPorts.ownership}
         Editor={draftPorts.Editor}
         openSettings={vi.fn()}
+        pageOpener={recentNotesPorts.opener}
+        recentNotesIndex={recentNotesPorts.index}
       />,
     );
     const firstController = controllers[0];
@@ -1308,6 +1742,8 @@ describe('SidePanelApp controller lifecycle', () => {
         draftOwnership={draftPorts.ownership}
         Editor={draftPorts.Editor}
         openSettings={vi.fn()}
+        pageOpener={recentNotesPorts.opener}
+        recentNotesIndex={recentNotesPorts.index}
       />,
     );
     const secondController = controllers[1];

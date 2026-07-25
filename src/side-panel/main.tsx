@@ -9,6 +9,8 @@ import { SidePanelApp, type CreateActivePageSessionController } from './App';
 import { PageNoteEditor } from './PageNoteEditor';
 import { ActivePageSessionController } from './activePageSession';
 import { ChromeActivePageTabs } from './chromeActivePageTabs';
+import { ChromeCanonicalPageOpener } from './chromeCanonicalPageOpener';
+import { ChromeRecentNoteChanges } from './chromeRecentNoteChanges';
 import {
   PageNoteDraftController,
   PendingPageSaveCoordinator,
@@ -18,6 +20,7 @@ import {
   type CreatePageNoteDraftRuntime,
   type RegisterPendingPageSave,
 } from './pageNoteOwnership';
+import { DefaultRootRecentNotesIndex } from './rootRecentNotes';
 import { SettingsPageIdentityExclusions } from './settingsPageIdentityExclusions';
 
 const rootElement = document.querySelector('#root');
@@ -30,6 +33,11 @@ const tabs = new ChromeActivePageTabs();
 const settingsRepository = new ChromeLocalSettingsRepository();
 const noteRepository = new ChromeLocalNoteRepository();
 const noteService = new DefaultNoteService({ repository: noteRepository });
+const pageOpener = new ChromeCanonicalPageOpener();
+const recentNotesIndex = new DefaultRootRecentNotesIndex(
+  noteService,
+  new ChromeRecentNoteChanges(),
+);
 const pendingPageSave = new PendingPageSaveCoordinator();
 const settings = new SettingsPageIdentityExclusions(settingsRepository);
 const identity = new DefaultPageIdentityService();
@@ -65,6 +73,8 @@ createRoot(rootElement).render(
       draftOwnership={draftOwnership}
       Editor={PageNoteEditor}
       openSettings={() => chrome.runtime.openOptionsPage()}
+      pageOpener={pageOpener}
+      recentNotesIndex={recentNotesIndex}
     />
   </StrictMode>,
 );

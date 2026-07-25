@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 
 import '../styles/base.css';
+import type { CanonicalPageOpener } from './chromeCanonicalPageOpener';
 import type { PageNoteEditorProps } from './PageNoteEditor';
 import type {
   ActivePageSessionController,
@@ -13,6 +14,12 @@ import type {
   PageNoteOwnershipConnection,
   PageNoteOwnershipView,
 } from './pageNoteOwnership';
+import type {
+  RootRecentNoteEntry,
+  RootRecentNotesConnection,
+  RootRecentNotesIndex,
+  RootRecentNotesState,
+} from './rootRecentNotes';
 
 export type {
   CreatePageNoteDraftRuntime,
@@ -31,6 +38,8 @@ export interface SidePanelAppProps {
   readonly draftOwnership: PageNoteOwnership;
   readonly Editor: ComponentType<PageNoteEditorProps>;
   readonly openSettings: () => void | Promise<void>;
+  readonly pageOpener: CanonicalPageOpener;
+  readonly recentNotesIndex: RootRecentNotesIndex;
 }
 
 interface SessionView {
@@ -239,6 +248,208 @@ function usePageNoteDraft(
     view,
     retryOwnership,
   };
+}
+
+interface RootRecentNotesView {
+  readonly retry: () => void;
+  readonly state: RootRecentNotesState | undefined;
+}
+
+function useRootRecentNotes(
+  session: SupportedActivePageSessionState | undefined,
+  index: RootRecentNotesIndex,
+): RootRecentNotesView {
+  const [state, setState] = useState<RootRecentNotesState>();
+  const connectionRef = useRef<RootRecentNotesConnection>();
+
+  useEffect(() => {
+    const connection = index.connect(setState);
+    connectionRef.current = connection;
+
+    return () => {
+      if (connectionRef.current === connection) {
+        connectionRef.current = undefined;
+      }
+
+      connection.disconnect();
+    };
+  }, [index]);
+
+  useEffect(() => {
+    connectionRef.current?.setSession(session);
+  }, [index, session]);
+
+  return {
+    retry: () => {
+      connectionRef.current?.retry();
+    },
+    state,
+  };
+}
+
+function recentNoteTitle(entry: RootRecentNoteEntry): string {
+  const title = entry.title.trim();
+
+  return title === '' ? canonicalContext(entry.canonicalUrl) : title;
+}
+
+function savedTimeLabel(savedAt: string): string {
+  const date = new Date(savedAt);
+
+  if (Number.isNaN(date.valueOf())) {
+    return savedAt;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date);
+}
+
+function RecentOriginNotes({
+  pageKey,
+  pageOpener,
+  retry,
+  state,
+}: {
+  readonly pageKey: string;
+  readonly pageOpener: CanonicalPageOpener;
+  readonly retry: () => void;
+  readonly state: RootRecentNotesState | undefined;
+}) {
+  const activeState = state?.pageKey === pageKey ? state : undefined;
+  const [openErrorPageKey, setOpenErrorPageKey] = useState<string>();
+  const actionLifecycleRef = useRef({ attempt: 0, mounted: true });
+
+  useEffect(() => {
+    const lifecycle = actionLifecycleRef.current;
+    lifecycle.mounted = true;
+
+    return () => {
+      lifecycle.mounted = false;
+      lifecycle.attempt += 1;
+    };
+  }, []);
+
+  const openEntry = (entry: RootRecentNoteEntry) => {
+    const lifecycle = actionLifecycleRef.current;
+    const attempt = lifecycle.attempt + 1;
+    lifecycle.attempt = attempt;
+    setOpenErrorPageKey(undefined);
+    const fail = () => {
+      if (lifecycle.mounted && lifecycle.attempt === attempt) {
+        setOpenErrorPageKey(entry.pageKey);
+      }
+    };
+
+    try {
+      void Promise.resolve(
+        pageOpener.openCanonicalUrl(entry.canonicalUrl),
+      ).then(() => {
+        if (lifecycle.mounted && lifecycle.attempt === attempt) {
+          setOpenErrorPageKey(undefined);
+        }
+      }, fail);
+    } catch {
+      fail();
+    }
+  };
+
+  return (
+    <section
+      className="surface recent-notes-surface"
+      aria-labelledby="recent-origin-notes-heading"
+    >
+      <h2 id="recent-origin-notes-heading">Recent notes on this origin</h2>
+      {activeState === undefined || activeState.status === 'loading' ? (
+        <p className="status" role="status" aria-live="polite">
+          Loading recent notes
+        </p>
+      ) : activeState.status === 'error' ? (
+        <div className="note-action-panel">
+          <p className="session-alert" role="alert">
+            PagePerch could not load recent notes from this origin. Retry.
+          </p>
+          <button type="button" onClick={retry}>
+            Retry recent notes
+          </button>
+        </div>
+      ) : (
+        <>
+          {activeState.refreshError ? (
+            <div className="note-action-panel recent-notes-issue">
+              <p className="session-alert" role="alert">
+                PagePerch could not refresh recent notes. Previously loaded
+                notes are still shown.
+              </p>
+              <button type="button" onClick={retry}>
+                Retry recent notes
+              </button>
+            </div>
+          ) : activeState.subscriptionError ? (
+            <div className="note-action-panel recent-notes-issue">
+              <p className="session-alert" role="alert">
+                Recent notes cannot update automatically right now. Retry
+                watching for local changes.
+              </p>
+              <button type="button" onClick={retry}>
+                Retry recent notes
+              </button>
+            </div>
+          ) : null}
+          {activeState.refreshing ? (
+            <p className="status recent-notes-refresh" role="status">
+              Refreshing recent notes
+            </p>
+          ) : null}
+          {activeState.entries.length === 0 ? (
+            <p className="recent-notes-empty" role="status">
+              No other saved notes on this origin yet.
+            </p>
+          ) : (
+            <ul className="recent-notes-list">
+              {activeState.entries.map((entry) => {
+                const title = recentNoteTitle(entry);
+
+                return (
+                  <li className="recent-note-item" key={entry.pageKey}>
+                    <div className="recent-note-copy">
+                      <h3>{title}</h3>
+                      <code title={entry.canonicalUrl}>
+                        {canonicalContext(entry.canonicalUrl)}
+                      </code>
+                      <p className="recent-note-saved">
+                        Saved{' '}
+                        <time dateTime={entry.savedAt}>
+                          {savedTimeLabel(entry.savedAt)}
+                        </time>
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        openEntry(entry);
+                      }}
+                    >
+                      Open {title} in new tab
+                    </button>
+                    {openErrorPageKey === entry.pageKey ? (
+                      <p
+                        className="session-alert recent-note-open-error"
+                        role="alert"
+                      >
+                        PagePerch could not open this saved page. Try again.
+                      </p>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
+      )}
+    </section>
+  );
 }
 
 function SupportedPageShell({
@@ -467,10 +678,14 @@ function SessionArea({
   view,
   draftOwnership,
   Editor,
+  pageOpener,
+  recentNotesIndex,
 }: {
   readonly view: SessionView;
   readonly draftOwnership: PageNoteOwnership;
   readonly Editor: ComponentType<PageNoteEditorProps>;
+  readonly pageOpener: CanonicalPageOpener;
+  readonly recentNotesIndex: RootRecentNotesIndex;
 }) {
   const flushError =
     view.current.status === 'error' &&
@@ -487,6 +702,7 @@ function SessionArea({
   const transient =
     view.current.status === 'supported' ? undefined : view.current;
   const draft = usePageNoteDraft(supported, draftOwnership);
+  const recentNotes = useRootRecentNotes(supported, recentNotesIndex);
 
   return (
     <div className="session-area">
@@ -496,13 +712,24 @@ function SessionArea({
         </p>
       )}
       {supported !== undefined ? (
-        <SupportedPageShell
-          key={supported.identity.pageKey}
-          session={supported}
-          draft={draft.view}
-          retryOwnership={draft.retryOwnership}
-          Editor={Editor}
-        />
+        <>
+          <SupportedPageShell
+            key={supported.identity.pageKey}
+            session={supported}
+            draft={draft.view}
+            retryOwnership={draft.retryOwnership}
+            Editor={Editor}
+          />
+          {supported.identity.isRoot ? (
+            <RecentOriginNotes
+              key={`recent:${supported.identity.pageKey}`}
+              pageKey={supported.identity.pageKey}
+              pageOpener={pageOpener}
+              retry={recentNotes.retry}
+              state={recentNotes.state}
+            />
+          ) : null}
+        </>
       ) : transient === undefined ? null : (
         <TransientSessionState state={transient} />
       )}
@@ -515,6 +742,8 @@ export function SidePanelApp({
   draftOwnership,
   Editor,
   openSettings,
+  pageOpener,
+  recentNotesIndex,
 }: SidePanelAppProps) {
   const view = useActivePageSession(createController);
   const [settingsError, setSettingsError] = useState<string>();
@@ -570,6 +799,8 @@ export function SidePanelApp({
         view={view}
         draftOwnership={draftOwnership}
         Editor={Editor}
+        pageOpener={pageOpener}
+        recentNotesIndex={recentNotesIndex}
       />
 
       <section

@@ -244,6 +244,69 @@ button:active {
   margin-top: 0.875rem !important;
 }
 
+.recent-notes-issue {
+  margin-bottom: 1rem;
+}
+
+.recent-notes-refresh {
+  margin: 0 0 1rem;
+}
+
+.recent-notes-empty {
+  padding: 0.75rem;
+  border: 1px dashed var(--border);
+  border-radius: 0.65rem;
+  background: var(--surface-muted);
+}
+
+.recent-notes-list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recent-note-item {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface-muted);
+}
+
+.recent-note-copy {
+  min-width: 0;
+}
+
+.recent-note-copy h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+.recent-note-copy code {
+  display: block;
+  color: var(--text);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.recent-note-saved {
+  margin-top: 0.35rem !important;
+  font-size: 0.78rem;
+}
+
+.recent-note-item > button {
+  justify-self: start;
+}
+
+.recent-note-open-error {
+  margin: 0 !important;
+}
+
 .settings-grid {
   display: grid;
   gap: 1rem;
@@ -301,11 +364,16 @@ button:active {
   }
 
   .preferences-surface > button,
-  .note-action-panel > button {
+  .note-action-panel > button,
+  .recent-note-item > button {
     width: 100%;
   }
 
   .note-action-panel {
     align-items: stretch;
+  }
+
+  .recent-note-item > button {
+    justify-self: stretch;
   }
 }
