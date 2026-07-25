@@ -21,6 +21,9 @@
   --button-background: #27623c;
   --button-background-hover: #174d2b;
   --focus: #236fca;
+  --alert-background: #fff1ed;
+  --alert-border: #bd4b2e;
+  --alert-text: #7b2d1a;
   --shadow: 0 12px 32px rgb(29 53 37 / 12%);
 }
 
@@ -121,9 +124,14 @@ button:active {
   margin-top: 1rem;
 }
 
+.session-area + .surface {
+  margin-top: 1rem;
+}
+
 .surface h2 {
   margin: 0 0 0.75rem;
   font-size: 1.1rem;
+  overflow-wrap: anywhere;
 }
 
 .surface p {
@@ -142,6 +150,7 @@ button:active {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
+  max-width: 100%;
   margin-top: 1rem;
   padding: 0.4rem 0.65rem;
   border-radius: 999px;
@@ -149,6 +158,7 @@ button:active {
   background: var(--surface-muted);
   font-size: 0.82rem;
   font-weight: 650;
+  overflow-wrap: anywhere;
 }
 
 .status::before {
@@ -157,6 +167,54 @@ button:active {
   border-radius: 999px;
   background: currentColor;
   content: '';
+}
+
+.surface-label {
+  margin-bottom: 0.35rem !important;
+  color: var(--brand-strong) !important;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.page-context {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 1rem !important;
+}
+
+.page-context span {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.page-context code {
+  display: block;
+  max-width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  color: var(--text);
+  background: var(--surface-muted);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.session-alert {
+  padding: 0.75rem;
+  border: 1px solid var(--alert-border);
+  border-radius: 0.65rem;
+  color: var(--alert-text) !important;
+  background: var(--alert-background);
+  overflow-wrap: anywhere;
+}
+
+.session-alert.surface {
+  margin-block: 0;
+  line-height: 1.5;
 }
 
 .settings-grid {
@@ -183,6 +241,9 @@ button:active {
     --button-background: #216a3a;
     --button-background-hover: #174d2b;
     --focus: #77b8ff;
+    --alert-background: #351f1a;
+    --alert-border: #d77a61;
+    --alert-text: #ffc0ae;
     --shadow: 0 12px 32px rgb(0 0 0 / 28%);
   }
 }

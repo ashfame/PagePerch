@@ -7,6 +7,7 @@ import {
   expect,
   test,
   type BrowserContext,
+  type Locator,
   type Page,
   type Worker,
 } from '@playwright/test';
@@ -46,6 +47,30 @@ async function closeExtension(session: ExtensionSession): Promise<void> {
   await rm(session.userDataDirectory, { force: true, recursive: true });
 }
 
+async function focusWithKeyboard(
+  page: Page,
+  target: Locator,
+  maximumTabs = 12,
+): Promise<void> {
+  if (await target.evaluate((element) => element === document.activeElement)) {
+    return;
+  }
+
+  for (let index = 0; index < maximumTabs; index += 1) {
+    await page.keyboard.press('Tab');
+
+    if (
+      await target.evaluate((element) => element === document.activeElement)
+    ) {
+      return;
+    }
+  }
+
+  throw new Error(
+    `Keyboard focus did not reach the target within ${String(maximumTabs)} Tab presses.`,
+  );
+}
+
 test('loads the unpacked module worker and both branded React surfaces', async () => {
   const session = await launchExtension();
 
@@ -82,12 +107,18 @@ test('loads the unpacked module worker and both branded React surfaces', async (
     await expect(
       session.page.getByRole('heading', { level: 1, name: 'PagePerch' }),
     ).toBeVisible();
+    await expect(
+      session.page.getByRole('heading', {
+        level: 2,
+        name: "Notes aren't available here",
+      }),
+    ).toBeVisible();
     await expect(session.page.getByRole('status')).toContainText(
-      'Local foundation ready',
+      'chrome-extension: page type is not supported',
     );
 
     const button = session.page.getByRole('button', { name: 'Open settings' });
-    await session.page.keyboard.press('Tab');
+    await focusWithKeyboard(session.page, button);
     await expect(button).toBeFocused();
 
     const visualState = await button.evaluate((element) => {
