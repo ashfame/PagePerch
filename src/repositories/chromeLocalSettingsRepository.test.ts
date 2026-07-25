@@ -1,0 +1,288 @@
+import { describe, expect, it } from 'vitest';
+
+import { DEFAULT_SETTINGS_V1, type SettingsRecordV1 } from '../domain/settings';
+import { InMemoryChromeStorage } from '../../test/inMemoryChromeStorage';
+import {
+  ChromeLocalSettingsRepository,
+  SETTINGS_STORAGE_KEY,
+} from './chromeLocalSettingsRepository';
+import {
+  RepositoryStoredDataError,
+  RepositoryStorageError,
+  RepositoryValidationError,
+} from './repositoryErrors';
+
+function settings(overrides: Partial<SettingsRecordV1> = {}): SettingsRecordV1 {
+  return {
+    schemaVersion: 1,
+    editorMode: 'text-focused-blocks',
+    pageIdentityExclusions: [],
+    ...overrides,
+  };
+}
+
+describe('ChromeLocalSettingsRepository', () => {
+  it('returns useful defaults for absent settings without writing them', async () => {
+    const storage = new InMemoryChromeStorage();
+    const repository = new ChromeLocalSettingsRepository(storage);
+
+    await expect(repository.get()).resolves.toEqual(DEFAULT_SETTINGS_V1);
+    expect(storage.setCalls).toEqual([]);
+    expect(storage.snapshot()).toEqual({});
+  });
+
+  it('returns a fresh defensive copy of absent defaults', async () => {
+    const repository = new ChromeLocalSettingsRepository(
+      new InMemoryChromeStorage(),
+    );
+    const first = await repository.get();
+
+    (first.pageIdentityExclusions as PageIdentityExclusionRuleLike[]).push({
+      origin: 'https://mutated.example',
+      parameterNames: ['tracking'],
+    });
+
+    await expect(repository.get()).resolves.toEqual(DEFAULT_SETTINGS_V1);
+  });
+
+  it('migrates the explicit minimal v0 envelope once and persists v1', async () => {
+    const storage = new InMemoryChromeStorage({
+      [SETTINGS_STORAGE_KEY]: {
+        schemaVersion: 0,
+        editorMode: 'paragraphs-only',
+      },
+    });
+    const repository = new ChromeLocalSettingsRepository(storage);
+    const migrated = settings({ editorMode: 'paragraphs-only' });
+
+    await expect(repository.get()).resolves.toEqual(migrated);
+    expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toEqual(migrated);
+    expect(storage.setCalls).toHaveLength(1);
+
+    await expect(repository.get()).resolves.toEqual(migrated);
+    expect(storage.setCalls).toHaveLength(1);
+  });
+
+  it('preserves v0 settings when migration persistence fails and retries cleanly', async () => {
+    const legacy = {
+      schemaVersion: 0,
+      editorMode: 'paragraphs-only',
+    } as const;
+    const storage = new InMemoryChromeStorage({
+      [SETTINGS_STORAGE_KEY]: legacy,
+    });
+    const repository = new ChromeLocalSettingsRepository(storage);
+    const migrationCause = new Error('quota exceeded');
+    storage.failNextSet(migrationCause);
+
+    await expect(repository.get()).rejects.toMatchObject({
+      name: 'RepositoryStorageError',
+      operation: 'put',
+      cause: migrationCause,
+    });
+    expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toEqual(legacy);
+
+    await expect(repository.get()).resolves.toEqual(
+      settings({ editorMode: 'paragraphs-only' }),
+    );
+  });
+
+  it.each([
+    [
+      'a malformed envelope',
+      { schemaVersion: 1, editorMode: 'unknown' },
+      'malformed',
+    ],
+    [
+      'an unknown legacy envelope',
+      { schemaVersion: 0, editorMode: 'paragraphs-only', legacyExtra: true },
+      'malformed',
+    ],
+    [
+      'a future envelope',
+      { schemaVersion: 2, editorMode: 'future-mode' },
+      'future-schema',
+    ],
+  ] as const)(
+    'preserves and reports %s',
+    async (_description, storedValue, expectedKind) => {
+      const storage = new InMemoryChromeStorage({
+        [SETTINGS_STORAGE_KEY]: storedValue,
+      });
+      const repository = new ChromeLocalSettingsRepository(storage);
+
+      await expect(repository.get()).rejects.toMatchObject({
+        name: 'RepositoryStoredDataError',
+        kind: expectedKind,
+        storageKey: SETTINGS_STORAGE_KEY,
+      });
+      expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toEqual(storedValue);
+      expect(storage.setCalls).toEqual([]);
+    },
+  );
+
+  it('round-trips settings and isolates nested input and returned values', async () => {
+    const storage = new InMemoryChromeStorage();
+    const repository = new ChromeLocalSettingsRepository(storage);
+    const original = settings({
+      editorMode: 'paragraphs-only',
+      pageIdentityExclusions: [
+        {
+          origin: 'https://example.com',
+          parameterNames: ['session', 'campaign'],
+        },
+      ],
+      byosConnection: {
+        accessToken: 'oauth-token',
+        expiresAt: '2026-08-01T11:59:00.000Z',
+        connectedAt: '2026-07-25T10:00:00.000Z',
+        lastSuccessfulSyncAt: '2026-07-25T10:10:00Z',
+      },
+    });
+
+    const pendingPut = repository.put(original);
+    (original.pageIdentityExclusions[0]?.parameterNames as string[]).push(
+      'mutated-after-put',
+    );
+    if (original.byosConnection !== undefined) {
+      (original.byosConnection as { accessToken: string }).accessToken =
+        'mutated-after-put';
+    }
+    await pendingPut;
+
+    const firstRead = await repository.get();
+    expect(firstRead).toEqual(
+      settings({
+        editorMode: 'paragraphs-only',
+        pageIdentityExclusions: [
+          {
+            origin: 'https://example.com',
+            parameterNames: ['session', 'campaign'],
+          },
+        ],
+        byosConnection: {
+          accessToken: 'oauth-token',
+          expiresAt: '2026-08-01T11:59:00.000Z',
+          connectedAt: '2026-07-25T10:00:00.000Z',
+          lastSuccessfulSyncAt: '2026-07-25T10:10:00Z',
+        },
+      }),
+    );
+
+    (firstRead.pageIdentityExclusions[0]?.parameterNames as string[]).push(
+      'mutated-after-get',
+    );
+    if (firstRead.byosConnection !== undefined) {
+      (firstRead.byosConnection as { accessToken: string }).accessToken =
+        'mutated-after-get';
+    }
+
+    await expect(repository.get()).resolves.not.toEqual(firstRead);
+  });
+
+  it('rejects invalid settings writes and never persists S3 credentials or account identity', async () => {
+    const storage = new InMemoryChromeStorage();
+    const repository = new ChromeLocalSettingsRepository(storage);
+    const invalid = {
+      ...settings(),
+      byosConnection: {
+        accessToken: 'oauth-token',
+        expiresAt: '2026-08-01T11:59:00Z',
+        connectedAt: '2026-07-25T10:00:00Z',
+        accessKeyId: 's3-key',
+        secretAccessKey: 's3-secret',
+        bucket: 'private-bucket',
+        accountId: 'private-account',
+      },
+    } as unknown as SettingsRecordV1;
+
+    await expect(repository.put(invalid)).rejects.toBeInstanceOf(
+      RepositoryValidationError,
+    );
+    expect(storage.snapshot()).toEqual({});
+  });
+
+  it('persists only account-independent OAuth metadata for a valid BYOS connection', async () => {
+    const storage = new InMemoryChromeStorage();
+    const repository = new ChromeLocalSettingsRepository(storage);
+
+    await repository.put(
+      settings({
+        byosConnection: {
+          accessToken: 'oauth-token',
+          expiresAt: '2026-08-01T11:59:00Z',
+          connectedAt: '2026-07-25T10:00:00Z',
+        },
+      }),
+    );
+
+    const serialized = JSON.stringify(storage.snapshot());
+    expect(serialized).toContain('oauth-token');
+    expect(serialized).not.toMatch(
+      /accessKeyId|secretAccessKey|bucket|accountId|accountIdentity/u,
+    );
+  });
+
+  it('does not overwrite malformed or future settings through put', async () => {
+    const future = { schemaVersion: 4, retained: 'recover me' };
+    const storage = new InMemoryChromeStorage({
+      [SETTINGS_STORAGE_KEY]: future,
+    });
+    const repository = new ChromeLocalSettingsRepository(storage);
+
+    await expect(repository.put(settings())).rejects.toBeInstanceOf(
+      RepositoryStoredDataError,
+    );
+    expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toEqual(future);
+  });
+
+  it('serializes concurrent settings writes across repository instances', async () => {
+    const storage = new InMemoryChromeStorage();
+    const firstRepository = new ChromeLocalSettingsRepository(storage);
+    const secondRepository = new ChromeLocalSettingsRepository(storage);
+    const first = settings({ editorMode: 'paragraphs-only' });
+    const second = settings({
+      editorMode: 'text-focused-blocks',
+      pageIdentityExclusions: [
+        {
+          origin: 'https://example.com',
+          parameterNames: ['session'],
+        },
+      ],
+    });
+
+    await Promise.all([
+      firstRepository.put(first),
+      secondRepository.put(second),
+    ]);
+
+    await expect(firstRepository.get()).resolves.toEqual(second);
+  });
+
+  it('wraps read and write failures and keeps the operation queue usable', async () => {
+    const storage = new InMemoryChromeStorage();
+    const repository = new ChromeLocalSettingsRepository(storage);
+
+    storage.failNextGet(new Error('profile unavailable'));
+    await expect(repository.get()).rejects.toMatchObject({
+      name: 'RepositoryStorageError',
+      operation: 'get',
+    });
+
+    storage.failNextSet(new Error('quota exceeded'));
+    await expect(repository.put(settings())).rejects.toBeInstanceOf(
+      RepositoryStorageError,
+    );
+    await expect(
+      repository.put(settings({ editorMode: 'paragraphs-only' })),
+    ).resolves.toBeUndefined();
+    await expect(repository.get()).resolves.toMatchObject({
+      editorMode: 'paragraphs-only',
+    });
+  });
+});
+
+interface PageIdentityExclusionRuleLike {
+  origin: string;
+  parameterNames: string[];
+}

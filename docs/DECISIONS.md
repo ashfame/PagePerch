@@ -55,3 +55,19 @@
 - Options considered: Abandon the required editor; force npm’s proposed downgrade; ignore the findings; lock, audit, document, and reassess before distribution.
 - Consequences: Local/private product work can continue with deterministic artifacts, but release readiness cannot claim a clean dependency audit and public distribution remains blocked.
 - Follow-up tasks: Reassess available editor/package updates during PP-010, test user-controlled content paths affected by Showdown, and document the final dependency review in release materials.
+
+## 2026-07-25 — Serialize Chrome Storage Index Mutations Across Extension Contexts
+
+- Decision: Coordinate note/settings repository operations through a shared per-storage promise queue and, when available, one same-origin Chrome Web Lock across extension documents and the service worker.
+- Context: Note records and exact-origin index envelopes require read/modify/write updates, while multiple PagePerch contexts can write concurrently and `chrome.storage.local` has no transaction primitive.
+- Options considered: Accept last-write-wins index races; keep only a per-instance queue; store one monolithic note envelope; use the Web Locks API with a realm-local fallback.
+- Consequences: Chrome 114 target contexts serialize repository operations without a monolithic large-value rewrite. Environments lacking Web Locks retain safe same-realm serialization but cannot promise cross-context index safety.
+- Follow-up tasks: Keep real extension smoke coverage for Web Locks availability and reassess if another supported runtime lacks the API.
+
+## 2026-07-25 — Surface Owned Storage Corruption Instead of Treating It as Absence
+
+- Decision: Return absence only for genuinely missing note/index values or harmless dangling memberships; raise typed recovery errors for owned malformed, future-version, key-mismatched, or wrong-origin values and never rewrite them automatically.
+- Context: Silently filtering owned invalid values could make corruption or a downgrade appear to have deleted notes and could give migrations an incomplete record set.
+- Options considered: Filter invalid values; delete/rebuild them automatically; fall back to a full scan; preserve bytes and require explicit recovery.
+- Consequences: UI and migration callers can distinguish empty state from recoverable storage trouble. Physical delete retry repairs only fully valid dangling memberships and leaves unknown data untouched.
+- Follow-up tasks: Map repository recovery errors to actionable UI in PP-004 and document recovery/export guidance in PP-009.

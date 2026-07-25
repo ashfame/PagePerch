@@ -33,22 +33,33 @@
 - Test expectations: Exhaustive table-driven canonicalization and hashing unit tests
 - Notes: Accepted after independent review and 84 focused cases; the requested product-rationale comment is present beside canonicalization.
 
-## PP-003 — Implement Versioned Local Storage and Note Service
+## PP-003A — Implement Versioned Local Repositories
 
-- Status: not started
+- Status: completed
 - Priority: P0
 - Dependencies: PP-002
 - Spec or plan references: Internal interfaces; Data model; local storage acceptance
-- Acceptance criteria: Versioned records and settings, storage-neutral repositories, Chrome local adapters, local-first note saves, normalized content hashes, unchanged-save skips, logical deletion, origin indexes, and large records work under mocked Chrome storage.
-- Suggested files: `src/domain/`, `src/repositories/`, `src/services/note*`, `test/`
-- Test expectations: Repository and service tests for upgrades, CRUD, indexing, unchanged content, tombstones, and large content
-- Notes: Keep timestamps and revision generation injectable for deterministic tests.
+- Acceptance criteria: Versioned note/settings domain envelopes, storage-neutral repository interfaces, Chrome local adapters, exact-origin indexing, physical repository CRUD, schema validation/migration, malformed-data preservation, concurrent mutation safety, and large records work under mocked Chrome storage.
+- Suggested files: `src/domain/`, `src/repositories/`, `test/`
+- Test expectations: Repository tests for defaults/upgrades, CRUD, origin movement/indexing, tombstone retention, malformed data, concurrent updates, isolation from unrelated keys, and large content
+- Notes: Accepted after three review cycles and 106 focused cases. Repository `delete` is physical infrastructure only; user clears are logical tombstones owned by PP-003B.
+
+## PP-003B — Implement Local-First Note Service
+
+- Status: not started
+- Priority: P0
+- Dependencies: PP-003A
+- Spec or plan references: Internal interfaces; Data model; Side panel autosave/delete/index semantics
+- Acceptance criteria: `NoteService` validates inputs, normalizes and hashes Gutenberg HTML, writes locally before reporting success, skips unchanged content/metadata, generates timestamps/revisions only for actual changes, writes logical tombstones for existing clears, creates no record for untouched clears, and returns recent non-deleted exact-origin indexes.
+- Suggested files: `src/services/note*`, domain types, tests
+- Test expectations: Deterministic service tests for create/update/unchanged/metadata/title/clear/tombstone/index behavior, injected clock/revision factory, storage failures, and large content
+- Notes: Keep timestamps, revision generation, and optional outbound-queue notification injectable; remote synchronization remains PP-007.
 
 ## PP-004 — Add Per-Page Editor and Origin Index
 
 - Status: not started
 - Priority: P0
-- Dependencies: PP-003
+- Dependencies: PP-003B
 - Spec or plan references: Side panel; editor modes; theme and accessibility requirements
 - Acceptance criteria: Active-tab changes remount documents after flushing; cached notes load; Gutenberg is locally bundled with remote APIs and disallowed capabilities disabled; autosave uses 750 ms debounce and explicit states; clearing behavior is correct; roots display a recent exact-origin index; themes, focus, reduced motion, narrow layouts, and link behavior meet the plan.
 - Suggested files: `src/side-panel/`, editor adapter, navigation bridge, component tests
@@ -59,7 +70,7 @@
 
 - Status: not started
 - Priority: P0
-- Dependencies: PP-003, PP-004
+- Dependencies: PP-003B, PP-004
 - Spec or plan references: Settings page; canonical identity migration requirements
 - Acceptance criteria: Exact-origin/name validation and duplicate prevention work; adding exclusions recalculates identities, merges collisions in deterministic Gutenberg documents, and tombstones former keys; removal moves combined notes without attempted splitting; repeated migration is idempotent.
 - Suggested files: `src/options/`, `src/services/identity-migration*`, repositories, tests
@@ -70,7 +81,7 @@
 
 - Status: not started
 - Priority: P0
-- Dependencies: PP-001, PP-003
+- Dependencies: PP-001, PP-003A
 - Spec or plan references: `byos_integrations.md`; BYOS integration; Settings page
 - Acceptance criteria: PKCE values use secure randomness; session state survives worker suspension; callback state and errors are validated; public-client token exchange is exact; token expiry is skewed early; S3 credentials and secret exist only in memory; missing build config and reconnect-required states are actionable; disconnect clears only local connection material.
 - Suggested files: `src/byos/`, settings repository, options controls, tests
@@ -81,7 +92,7 @@
 
 - Status: not started
 - Priority: P0
-- Dependencies: PP-003, PP-006
+- Dependencies: PP-003B, PP-006
 - Spec or plan references: Internal interfaces; Data model reconciliation; BYOS integration
 - Acceptance criteria: AWS SDK v3 uses injected endpoint/region/bucket/credentials, SigV4, and path style; records map to deterministic keys; reconcile chooses newest timestamp then revision ID; tombstones overwrite; queue coalesces by key and survives restart; retry backoff is bounded; all required sync triggers and status reporting work.
 - Suggested files: `src/sync/`, `src/byos/s3*`, service worker, panel/options integration
