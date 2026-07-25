@@ -56,6 +56,6 @@ Replace the rejected superficial style and height assertions with real Gutenberg
 
 ## M9 — 0.1.3 Corrective Minor Update
 
-Status: in progress.
+Status: completed.
 
 Bind the accepted editor correction to version `0.1.3`, run the complete release gate, produce a deterministic audited ZIP and checksum, and publish the standing annotated minor-update tag without rewriting the rejected `v0.1.2` release.

@@ -178,11 +178,11 @@
 
 ## PP-015 — Cut the 0.1.3 Corrective Minor Update
 
-- Status: in progress
+- Status: completed
 - Priority: P0
 - Dependencies: PP-014
 - Spec or plan references: User-requested `v0.1.2` correction and standing minor-update tag convention
 - Acceptance criteria: Package, lockfile, and Chrome manifest versions agree at `0.1.3`; README release commands name the exact artifact; the complete release gate passes; one deterministic `pageperch-0.1.3.zip` plus matching strict checksum is produced; the source commit is annotated with `v0.1.3` using the standing minor-update message and both commit and tag are pushed without modifying `v0.1.2`.
 - Suggested files: version metadata, README, release evidence, orchestration state
 - Test expectations: Complete `npm run check`, repeated deterministic `npm run release:package`, exact archive/checksum cardinality and names, strict checksum verification, ZIP integrity, embedded manifest/package version inspection, clean source/tag verification, and green branch/tag CI
-- Notes: Main orchestrator owns version binding, release evidence, commit, tag, push, and final manual-test handoff.
+- Notes: Package, both lockfile version fields, source manifest, and archived manifest agree at `0.1.3`. The complete 963-test/build/audit/browser gate passes with six Chromium flows and one intentional native-toolbar skip. Two packaging runs produced the identical 5,062,768-byte archive with SHA-256 `589ec6ca690ac3cfd87515df9bec29933015dfc78ffc2175e23f6ae2650f898c`; strict checksum verification, ZIP integrity, exact two-file artifact cardinality, and embedded-manifest inspection pass. The release source is committed, annotated as `PagePerch 0.1.3 — Minor update`, and pushed without rewriting `v0.1.2`.
