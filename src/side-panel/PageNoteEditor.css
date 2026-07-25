@@ -1,0 +1,270 @@
+.page-note-editor {
+  --page-note-editor-background: #ffffff;
+  --page-note-editor-canvas: #f8faf8;
+  --page-note-editor-border: #c8d3cb;
+  --page-note-editor-text: #17241b;
+  --page-note-editor-muted: #536158;
+  --page-note-editor-accent: #27623c;
+  --page-note-editor-focus: #236fca;
+  --wp-admin-theme-color: #27623c;
+  --wp-admin-theme-color--rgb: 39, 98, 60;
+  --wp-admin-theme-color-darker-10: #174d2b;
+  --wp-admin-theme-color-darker-10--rgb: 23, 77, 43;
+  --wp-admin-theme-color-darker-20: #103a20;
+  --wp-admin-theme-color-darker-20--rgb: 16, 58, 32;
+  --wp-components-color-accent: #27623c;
+  --wp-components-color-accent-inverted: #ffffff;
+  --wp-components-color-accent-darker-10: #174d2b;
+  --wp-components-color-accent-darker-20: #103a20;
+  --wp-components-color-background: #ffffff;
+  --wp-components-color-foreground: #17241b;
+  --wp-components-color-foreground-inverted: #ffffff;
+  --wp-editor-canvas-background: #f8faf8;
+  --wp-editor-background: #ffffff;
+  --wp-editor-text-color: #17241b;
+  min-width: 0;
+  color: var(--page-note-editor-text);
+}
+
+.page-note-editor__heading {
+  margin: 0;
+  color: var(--page-note-editor-text);
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.page-note-editor__description {
+  margin: 0.35rem 0 0.75rem;
+  color: var(--page-note-editor-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.page-note-editor__loading {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--page-note-editor-border);
+  border-radius: 0.5rem;
+  color: var(--page-note-editor-accent);
+  background: var(--page-note-editor-canvas);
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+
+.page-note-editor__error {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #a33b36;
+  border-radius: 0.5rem;
+  color: #721c18;
+  background: #fff1f0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.page-note-editor__canvas {
+  min-width: 0;
+  overflow: clip;
+  border: 1px solid var(--page-note-editor-border);
+  border-radius: 0.75rem;
+  background: var(--page-note-editor-background);
+}
+
+.page-note-editor__isolated,
+.page-note-editor__isolated .iso-editor,
+.page-note-editor__isolated .interface-interface-skeleton,
+.page-note-editor__isolated .interface-interface-skeleton__content {
+  min-width: 0;
+  color: var(--page-note-editor-text);
+  background: var(--page-note-editor-background);
+}
+
+.page-note-editor__isolated .editor-styles-wrapper {
+  color: var(--page-note-editor-text);
+  background: var(--page-note-editor-canvas);
+}
+
+.page-note-editor__isolated :where(button, [role='button']):focus-visible,
+.page-note-editor__isolated
+  :where([contenteditable='true'], input, textarea):focus-visible {
+  outline: 3px solid var(--page-note-editor-focus);
+  outline-offset: 2px;
+}
+
+.page-note-editor__isolated
+  :where(.edit-post-header, .edit-post-header-toolbar, .editor-header) {
+  max-width: 100%;
+}
+
+@media (prefers-color-scheme: dark) {
+  .page-note-editor {
+    --page-note-editor-background: #18211b;
+    --page-note-editor-canvas: #101712;
+    --page-note-editor-border: #3a4a3f;
+    --page-note-editor-text: #eef5f0;
+    --page-note-editor-muted: #b4c1b8;
+    --page-note-editor-accent: #58b775;
+    --page-note-editor-focus: #77b8ff;
+    --wp-admin-theme-color: #58b775;
+    --wp-admin-theme-color--rgb: 88, 183, 117;
+    --wp-admin-theme-color-darker-10: #3f9b61;
+    --wp-admin-theme-color-darker-10--rgb: 63, 155, 97;
+    --wp-admin-theme-color-darker-20: #2f7848;
+    --wp-admin-theme-color-darker-20--rgb: 47, 120, 72;
+    --wp-components-color-accent: #58b775;
+    --wp-components-color-accent-inverted: #101712;
+    --wp-components-color-accent-darker-10: #3f9b61;
+    --wp-components-color-accent-darker-20: #2f7848;
+    --wp-components-color-background: #18211b;
+    --wp-components-color-foreground: #eef5f0;
+    --wp-components-color-foreground-inverted: #101712;
+    --wp-editor-canvas-background: #101712;
+    --wp-editor-background: #18211b;
+    --wp-editor-text-color: #eef5f0;
+  }
+
+  .page-note-editor .page-note-editor__error {
+    border-color: #c86d67;
+    color: #ffe9e7;
+    background: #351b1a;
+  }
+
+  .page-note-editor .page-note-editor__isolated.iso-editor,
+  .page-note-editor
+    .page-note-editor__isolated.iso-editor
+    .interface-interface-skeleton,
+  .page-note-editor
+    .page-note-editor__isolated.iso-editor
+    .interface-interface-skeleton__body,
+  .page-note-editor
+    .page-note-editor__isolated.iso-editor
+    .interface-interface-skeleton__content {
+    border-color: var(--page-note-editor-border);
+    color: var(--page-note-editor-text);
+    background: var(--page-note-editor-background);
+  }
+
+  .page-note-editor
+    .page-note-editor__isolated.iso-editor
+    .edit-post-visual-editor,
+  .page-note-editor
+    .page-note-editor__isolated.iso-editor
+    .editor-styles-wrapper {
+    color: var(--page-note-editor-text);
+    background: var(--page-note-editor-canvas);
+  }
+
+  .page-note-editor .page-note-editor__isolated.iso-editor .editor-header,
+  .page-note-editor .page-note-editor__isolated.iso-editor .edit-post-header,
+  .page-note-editor
+    .page-note-editor__isolated.iso-editor
+    .block-editor-block-contextual-toolbar,
+  .page-note-editor .page-note-editor__isolated.iso-editor .components-toolbar,
+  .page-note-editor
+    .page-note-editor__isolated.iso-editor
+    .components-toolbar-group {
+    border-color: var(--page-note-editor-border);
+    color: var(--page-note-editor-text);
+    background: var(--page-note-editor-background);
+  }
+
+  .page-note-editor
+    .page-note-editor__isolated.iso-editor
+    :where(input, select, textarea),
+  .page-note-editor
+    .page-note-editor__isolated.iso-editor
+    :where(.components-button, .components-menu-item__button) {
+    border-color: var(--page-note-editor-border);
+    color: var(--page-note-editor-text);
+    background-color: var(--page-note-editor-background);
+  }
+
+  .page-note-editor
+    .page-note-editor__isolated.iso-editor
+    .components-popover__content,
+  .page-note-editor
+    .page-note-editor__isolated.iso-editor
+    .components-popover__header,
+  .page-note-editor
+    .page-note-editor__isolated.iso-editor
+    .components-dropdown-menu__menu,
+  .page-note-editor
+    .page-note-editor__isolated.iso-editor
+    .components-menu-group,
+  .page-note-editor
+    .page-note-editor__isolated.iso-editor
+    .components-input-control__container {
+    border-color: var(--page-note-editor-border);
+    color: var(--page-note-editor-text);
+    background: var(--page-note-editor-background);
+    box-shadow: 0 0 0 1px var(--page-note-editor-border);
+  }
+
+  .page-note-editor
+    .page-note-editor__isolated.iso-editor
+    .components-popover__arrow::before {
+    background-color: var(--page-note-editor-background);
+  }
+
+  .page-note-editor
+    .page-note-editor__isolated.iso-editor
+    .components-popover__triangle-bg {
+    fill: var(--page-note-editor-background);
+  }
+
+  .page-note-editor
+    .page-note-editor__isolated.iso-editor
+    .components-popover__triangle-border {
+    stroke: var(--page-note-editor-border);
+  }
+
+  .page-note-editor
+    .page-note-editor__isolated.iso-editor
+    :where(
+      .components-button,
+      .components-menu-item__button,
+      input,
+      select,
+      textarea,
+      [contenteditable='true']
+    ):focus-visible {
+    outline: 3px solid var(--page-note-editor-focus);
+    outline-offset: 2px;
+    box-shadow: none;
+  }
+
+  .page-note-editor
+    .page-note-editor__isolated.iso-editor
+    :where(.components-button.is-primary, .components-button.is-pressed) {
+    color: var(--wp-components-color-accent-inverted);
+    background: var(--wp-components-color-accent);
+  }
+}
+
+@media (max-width: 320px) {
+  .page-note-editor__canvas {
+    border-radius: 0.6rem;
+  }
+
+  .page-note-editor__isolated
+    :where(.editor-header, .editor-header__toolbar, .editor-header__settings) {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .page-note-editor__isolated
+    :where(.editor-header__toolbar, .editor-header__settings) {
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-note-editor *,
+  .page-note-editor *::before,
+  .page-note-editor *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
