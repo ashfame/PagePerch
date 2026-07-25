@@ -18,6 +18,7 @@ PagePerch protects private note content, canonical URLs and titles, OAuth access
 - Request only `storage:app storage:s3`; never request OpenID identity scopes.
 - Store the OAuth access token and an expiry adjusted at least 60 seconds early, but never persist the S3 secret, access key, or bucket alias.
 - Clear token, PKCE state, in-memory credentials, and connection metadata on disconnect while retaining notes, tombstones, and remote objects.
+- Treat connect and credential issuance as cancellable generations: disconnect returns without waiting for interactive authorization, and any late session/token/credential completion is cleared or rejected before it can restore connection state or return a secret.
 - Redact token responses, authorization codes, signed headers, credentials, and note bodies from diagnostics and CI artifacts.
 
 ## Package Controls

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_SETTINGS_V1,
+  type ByosConnectionV1,
   type EditorMode,
   type SettingsRecordV1,
 } from '../domain/settings';
@@ -254,6 +255,65 @@ describe('ChromeLocalSettingsRepository', () => {
     expect(storage.setCalls).toEqual([]);
   });
 
+  it('atomically connects and disconnects BYOS while preserving the latest editor and exclusion settings', async () => {
+    const current = settings({
+      editorMode: 'paragraphs-only',
+      pageIdentityExclusions: [
+        { origin: 'https://example.com', parameterNames: ['session'] },
+      ],
+    });
+    const connection: ByosConnectionV1 = {
+      accessToken: 'oauth-token',
+      expiresAt: '2026-08-01T11:59:00Z',
+      connectedAt: '2026-07-25T10:00:00Z',
+    };
+    const storage = new InMemoryChromeStorage({
+      [SETTINGS_STORAGE_KEY]: current,
+    });
+    const repository = new ChromeLocalSettingsRepository(storage);
+    const connected = await repository.updateByosConnection(connection);
+
+    expect(connected).toEqual({ ...current, byosConnection: connection });
+    expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toEqual(connected);
+    (connection as { accessToken: string }).accessToken = 'mutated-input';
+    (connected.byosConnection as { accessToken: string }).accessToken =
+      'mutated-output';
+    expect(
+      (storage.snapshot()[SETTINGS_STORAGE_KEY] as SettingsRecordV1)
+        .byosConnection?.accessToken,
+    ).toBe('oauth-token');
+
+    await expect(repository.updateByosConnection(undefined)).resolves.toEqual(
+      current,
+    );
+    expect(storage.snapshot()).toEqual({ [SETTINGS_STORAGE_KEY]: current });
+  });
+
+  it.each([
+    ['absent defaults', undefined],
+    ['understood v0', { schemaVersion: 0, editorMode: 'paragraphs-only' }],
+  ])('connects BYOS while safely materializing %s', async (_label, stored) => {
+    const connection: ByosConnectionV1 = {
+      accessToken: 'oauth-token',
+      expiresAt: '2026-08-01T11:59:00Z',
+      connectedAt: '2026-07-25T10:00:00Z',
+    };
+    const storage = new InMemoryChromeStorage(
+      stored === undefined ? {} : { [SETTINGS_STORAGE_KEY]: stored },
+    );
+    const repository = new ChromeLocalSettingsRepository(storage);
+    const expected = settings({
+      editorMode:
+        stored === undefined ? 'text-focused-blocks' : 'paragraphs-only',
+      byosConnection: connection,
+    });
+
+    await expect(repository.updateByosConnection(connection)).resolves.toEqual(
+      expected,
+    );
+    expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toEqual(expected);
+  });
+
   it('rejects invalid settings writes and never persists S3 credentials or account identity', async () => {
     const storage = new InMemoryChromeStorage();
     const repository = new ChromeLocalSettingsRepository(storage);
@@ -273,7 +333,11 @@ describe('ChromeLocalSettingsRepository', () => {
     await expect(repository.put(invalid)).rejects.toBeInstanceOf(
       RepositoryValidationError,
     );
+    await expect(
+      repository.updateByosConnection(invalid.byosConnection),
+    ).rejects.toBeInstanceOf(RepositoryValidationError);
     expect(storage.snapshot()).toEqual({});
+    expect(storage.getCalls).toEqual([]);
   });
 
   it('persists only account-independent OAuth metadata for a valid BYOS connection', async () => {
@@ -310,6 +374,13 @@ describe('ChromeLocalSettingsRepository', () => {
     await expect(
       repository.updateEditorMode('paragraphs-only'),
     ).rejects.toBeInstanceOf(RepositoryStoredDataError);
+    await expect(
+      repository.updateByosConnection({
+        accessToken: 'oauth-token',
+        expiresAt: '2026-08-01T11:59:00Z',
+        connectedAt: '2026-07-25T10:00:00Z',
+      }),
+    ).rejects.toBeInstanceOf(RepositoryStoredDataError);
     expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toEqual(future);
     expect(storage.setCalls).toEqual([]);
   });
@@ -342,6 +413,17 @@ describe('ChromeLocalSettingsRepository', () => {
       });
       await expect(
         repository.updateEditorMode('text-focused-blocks'),
+      ).rejects.toMatchObject({
+        name: 'RepositoryPendingIdentityMigrationError',
+        code: 'pending-identity-migration',
+        operation: 'put',
+      });
+      await expect(
+        repository.updateByosConnection({
+          accessToken: 'oauth-token',
+          expiresAt: '2026-08-01T11:59:00Z',
+          connectedAt: '2026-07-25T10:00:00Z',
+        }),
       ).rejects.toMatchObject({
         name: 'RepositoryPendingIdentityMigrationError',
         code: 'pending-identity-migration',

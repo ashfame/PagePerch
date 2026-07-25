@@ -14,6 +14,8 @@ The side panel observes active-tab and navigation state through extension APIs, 
 4. Persistence: storage-neutral repository interfaces with Chrome local/session implementations.
 5. Transport: injected `RemoteReplicaRepository`, BYOS credential provider, and reusable path-style SigV4 `S3ReplicaRepository`.
 
+The BYOS boundary is extension-side client composition only. A public-client coordinator uses `chrome.identity` plus the established BYOS HTTP endpoints, persists pending PKCE state in session storage, patches the early-expiring OAuth connection into local settings, and delegates one-time S3 credential issuance to a cancellation-safe memory provider. Lifecycle generations make disconnect final across late authorization and credential completion.
+
 ## Data Flow
 
 An active supported URL is canonicalized by removing the fragment, retaining the normalized exact origin and pathname, filtering global and exact-origin exclusions case-insensitively, and sorting remaining query keys and values deterministically. SHA-256/base64url of the canonical URL becomes `pageKey`; the unhashed canonical URL remains in each record.

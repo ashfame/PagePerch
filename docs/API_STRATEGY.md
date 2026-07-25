@@ -10,7 +10,7 @@ The service worker calls `chrome.sidePanel.setPanelBehavior({ openPanelOnActionC
 
 Authorization uses `GET https://byos.ashfame.com/oauth2/auth` with response type `code`, exact redirect URI, storage-only scopes, state, and S256 challenge. Token exchange uses form-encoded `POST /oauth2/token`. Temporary credentials use bearer-authenticated JSON `POST /oauth2/protocol-credentials` with only `protocol`, `kind`, and `label`.
 
-Validate HTTP status, content type, schema, scope, expiry, state, and callback errors. Map low-level failures to stable internal error codes and safe actionable UI text while retaining only redacted diagnostics.
+The extension-side client validates HTTP status, response schema, exact scope set, expiry, state, redirect path, duplicate callback fields, and callback errors. It maps low-level failures to stable internal error codes and safe actionable UI text without retaining response bodies, codes, verifiers, tokens, or credentials in diagnostics.
 
 ## S3 Replica API
 

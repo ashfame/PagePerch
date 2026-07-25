@@ -1,6 +1,7 @@
 import {
   DEFAULT_SETTINGS_V1,
   SETTINGS_SCHEMA_VERSION,
+  type ByosConnectionV1,
   type EditorMode,
   type SettingsRecordV0,
   type SettingsRecordV1,
@@ -53,6 +54,18 @@ function migrateSettingsV0(settings: SettingsRecordV0): SettingsRecordV1 {
 
 function isEditorMode(value: unknown): value is EditorMode {
   return value === 'text-focused-blocks' || value === 'paragraphs-only';
+}
+
+function isByosConnection(
+  value: unknown,
+): value is ByosConnectionV1 | undefined {
+  return (
+    value === undefined ||
+    isSettingsRecordV1({
+      ...DEFAULT_SETTINGS_V1,
+      byosConnection: value,
+    })
+  );
 }
 
 function invalidStoredSettings(value: unknown): RepositoryStoredDataError {
@@ -191,6 +204,69 @@ export class ChromeLocalSettingsRepository implements SettingsRepository {
       }
 
       const updated = { ...currentSettings, editorMode };
+      await storageSet(
+        this.#storageArea,
+        { [SETTINGS_STORAGE_KEY]: updated },
+        'put',
+      );
+
+      return cloneSettings(updated);
+    });
+  }
+
+  async updateByosConnection(
+    connection: ByosConnectionV1 | undefined,
+  ): Promise<SettingsRecordV1> {
+    if (!isByosConnection(connection)) {
+      throw new RepositoryValidationError(
+        'put',
+        'Cannot store an invalid PagePerch BYOS connection.',
+      );
+    }
+
+    const connectionSnapshot =
+      connection === undefined ? undefined : { ...connection };
+
+    return this.#enqueue(async () => {
+      const stored = await storageGet(
+        this.#storageArea,
+        [IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY, SETTINGS_STORAGE_KEY],
+        'put',
+      );
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          stored,
+          IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY,
+        )
+      ) {
+        throw new RepositoryPendingIdentityMigrationError('put');
+      }
+
+      const existingValue = stored[SETTINGS_STORAGE_KEY];
+      let currentSettings: SettingsRecordV1;
+
+      if (existingValue === undefined) {
+        currentSettings = cloneSettings(DEFAULT_SETTINGS_V1);
+      } else if (isSettingsRecordV1(existingValue)) {
+        currentSettings = cloneSettings(existingValue);
+      } else if (isSettingsRecordV0(existingValue)) {
+        currentSettings = migrateSettingsV0(existingValue);
+      } else {
+        throw invalidStoredSettings(existingValue);
+      }
+
+      const updated: SettingsRecordV1 =
+        connectionSnapshot === undefined
+          ? {
+              schemaVersion: currentSettings.schemaVersion,
+              editorMode: currentSettings.editorMode,
+              pageIdentityExclusions: currentSettings.pageIdentityExclusions,
+            }
+          : {
+              ...currentSettings,
+              byosConnection: connectionSnapshot,
+            };
       await storageSet(
         this.#storageArea,
         { [SETTINGS_STORAGE_KEY]: updated },

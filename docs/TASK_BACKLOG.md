@@ -86,7 +86,7 @@
 - Acceptance criteria: PKCE values use secure randomness; session state survives worker suspension; callback state and errors are validated; public-client token exchange is exact; token expiry is skewed early; S3 credentials and secret exist only in memory; missing build config and reconnect-required states are actionable; disconnect clears only local connection material.
 - Suggested files: `src/byos/`, settings repository, options controls, tests
 - Test expectations: Deterministic crypto/network mocks covering success, state mismatch, callback/token errors, expiry, missing config, and disconnect
-- Notes: Never request identity scopes or store the S3 secret.
+- Notes: PP-006A is independently approved. The extension-side client generates S256 PKCE with Web Crypto, persists only the pending verifier/state in `chrome.storage.session`, validates the exact callback and storage-only token response, stores the early-expiring OAuth token through an atomic settings patch, issues protocol credentials through the established BYOS endpoints, and keeps access key/secret/bucket only in a cancellation-safe memory cache. Disconnect resumes any legitimate pending identity migration, invalidates late OAuth/credential completion, clears transient/local connection material, and leaves notes and remote objects untouched. Options controls remain PP-006B. Never request identity scopes or persist the S3 secret.
 
 ## PP-007 — Implement S3 Replica and Sync Engine
 
