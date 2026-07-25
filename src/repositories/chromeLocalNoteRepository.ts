@@ -1,4 +1,5 @@
 import type { NoteRecordV1 } from '../domain/note';
+import { IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY } from '../services/identityMigrationPersistence';
 import type { NoteRepository } from './noteRepository';
 import {
   enqueueStorageOperation,
@@ -9,6 +10,7 @@ import {
   type PromiseChromeStorageArea,
 } from './chromeStorage';
 import {
+  RepositoryPendingIdentityMigrationError,
   RepositoryStoredDataError,
   RepositoryValidationError,
   type RepositoryOperation,
@@ -23,9 +25,9 @@ import {
 export const NOTE_STORAGE_KEY_PREFIX = 'pageperch:v1:notes:';
 export const NOTE_ORIGIN_INDEX_KEY_PREFIX = 'pageperch:v1:note-origin-indexes:';
 
-const NOTE_ORIGIN_INDEX_SCHEMA_VERSION = 1 as const;
+export const NOTE_ORIGIN_INDEX_SCHEMA_VERSION = 1 as const;
 
-interface NoteOriginIndexV1 {
+export interface NoteOriginIndexV1 {
   readonly schemaVersion: typeof NOTE_ORIGIN_INDEX_SCHEMA_VERSION;
   readonly origin: string;
   readonly pageKeys: readonly string[];
@@ -47,7 +49,7 @@ function cloneIndex(index: NoteOriginIndexV1): NoteOriginIndexV1 {
   return { ...index, pageKeys: [...index.pageKeys] };
 }
 
-function isNoteOriginIndexV1(
+export function isNoteOriginIndexV1(
   value: unknown,
   expectedOrigin: string,
 ): value is NoteOriginIndexV1 {
@@ -148,9 +150,19 @@ export class ChromeLocalNoteRepository implements NoteRepository {
       const noteStorageKey = getNoteStorageKey(recordSnapshot.pageKey);
       const existingValues = await storageGet(
         this.#storageArea,
-        noteStorageKey,
+        [IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY, noteStorageKey],
         'put',
       );
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          existingValues,
+          IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY,
+        )
+      ) {
+        throw new RepositoryPendingIdentityMigrationError('put');
+      }
+
       const existingValue = existingValues[noteStorageKey];
       let existingRecord: NoteRecordV1 | undefined;
 
@@ -251,9 +263,19 @@ export class ChromeLocalNoteRepository implements NoteRepository {
       const noteStorageKey = getNoteStorageKey(pageKey);
       const stored = await storageGet(
         this.#storageArea,
-        noteStorageKey,
+        [IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY, noteStorageKey],
         'delete',
       );
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          stored,
+          IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY,
+        )
+      ) {
+        throw new RepositoryPendingIdentityMigrationError('delete');
+      }
+
       const storedRecord = stored[noteStorageKey];
 
       if (storedRecord === undefined) {

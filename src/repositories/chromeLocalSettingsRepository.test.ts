@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_SETTINGS_V1, type SettingsRecordV1 } from '../domain/settings';
+import { IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY } from '../services/identityMigrationPersistence';
 import { InMemoryChromeStorage } from '../../test/inMemoryChromeStorage';
 import {
   ChromeLocalSettingsRepository,
   SETTINGS_STORAGE_KEY,
 } from './chromeLocalSettingsRepository';
 import {
+  RepositoryPendingIdentityMigrationError,
   RepositoryStoredDataError,
   RepositoryStorageError,
   RepositoryValidationError,
@@ -234,6 +236,56 @@ describe('ChromeLocalSettingsRepository', () => {
       RepositoryStoredDataError,
     );
     expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toEqual(future);
+  });
+
+  it.each([
+    ['versioned', { schemaVersion: 1, phase: 'planned' }],
+    ['malformed', { partial: true }],
+    ['future', { schemaVersion: 99, future: true }],
+  ])(
+    'blocks settings writes for any %s identity migration journal and resumes normal behavior after removal',
+    async (_description, journal) => {
+      const existing = settings({ editorMode: 'paragraphs-only' });
+      const requested = settings({
+        pageIdentityExclusions: [
+          { origin: 'https://example.com', parameterNames: ['session'] },
+        ],
+      });
+      const storage = new InMemoryChromeStorage({
+        [IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY]: journal,
+        [SETTINGS_STORAGE_KEY]: existing,
+      });
+      const repository = new ChromeLocalSettingsRepository(storage);
+
+      await expect(repository.put(requested)).rejects.toMatchObject({
+        name: 'RepositoryPendingIdentityMigrationError',
+        code: 'pending-identity-migration',
+        operation: 'put',
+        message:
+          'PagePerch data cannot be changed while an identity migration is pending. Retry after the migration finishes.',
+      });
+      expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toEqual(existing);
+      expect(storage.setCalls).toEqual([]);
+      await expect(repository.get()).resolves.toEqual(existing);
+
+      await storage.remove(IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY);
+      storage.resetCalls();
+
+      await expect(repository.put(requested)).resolves.toBeUndefined();
+      expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toEqual(requested);
+      expect(storage.setCalls).toHaveLength(1);
+    },
+  );
+
+  it('exposes a stable typed pending-migration error without accepting sensitive message input', () => {
+    const error = new RepositoryPendingIdentityMigrationError('put');
+
+    expect(error).toMatchObject({
+      name: 'RepositoryPendingIdentityMigrationError',
+      code: 'pending-identity-migration',
+      operation: 'put',
+    });
+    expect(error.message).not.toContain('https://');
   });
 
   it('serializes concurrent settings writes across repository instances', async () => {

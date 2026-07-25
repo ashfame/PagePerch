@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { NoteRecordV1 } from '../domain/note';
+import { IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY } from '../services/identityMigrationPersistence';
 import { InMemoryChromeStorage } from '../../test/inMemoryChromeStorage';
 import {
   ChromeLocalNoteRepository,
@@ -10,6 +11,7 @@ import {
   NOTE_STORAGE_KEY_PREFIX,
 } from './chromeLocalNoteRepository';
 import {
+  RepositoryPendingIdentityMigrationError,
   RepositoryStoredDataError,
   RepositoryStorageError,
   RepositoryValidationError,
@@ -548,6 +550,94 @@ describe('ChromeLocalNoteRepository', () => {
     await expect(
       repository.listByOrigin('https://example.com'),
     ).resolves.toEqual([second, third]);
+  });
+
+  it.each([
+    ['versioned', { schemaVersion: 1, phase: 'planned' }],
+    ['malformed', { partial: true }],
+    ['future', { schemaVersion: 99, future: true }],
+  ])(
+    'blocks note and index mutations for any %s identity migration journal',
+    async (_description, journal) => {
+      const existing = note();
+      const indexKey = getNoteOriginIndexStorageKey(existing.origin);
+      const initialValues = {
+        [IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY]: journal,
+        [getNoteStorageKey(existing.pageKey)]: existing,
+        [indexKey]: originIndex(existing.origin, [existing.pageKey]),
+      };
+      const storage = new InMemoryChromeStorage(initialValues);
+      const firstRepository = new ChromeLocalNoteRepository(storage);
+      const secondRepository = new ChromeLocalNoteRepository(storage);
+      const added = note({
+        pageKey: PAGE_KEY_B,
+        canonicalUrl: 'https://example.com/b',
+        representativeUrl: 'https://example.com/b',
+        title: 'Blocked addition',
+        revisionId: 'blocked-revision',
+      });
+
+      const results = await Promise.allSettled([
+        firstRepository.put(added),
+        secondRepository.delete(existing.pageKey),
+      ]);
+
+      expect(results[0]?.status).toBe('rejected');
+      expect(results[1]?.status).toBe('rejected');
+
+      if (
+        results[0]?.status !== 'rejected' ||
+        results[1]?.status !== 'rejected'
+      ) {
+        throw new Error('Expected both pending migration guards to reject.');
+      }
+
+      expect(results[0].reason).toMatchObject({
+        name: 'RepositoryPendingIdentityMigrationError',
+        code: 'pending-identity-migration',
+        operation: 'put',
+      });
+      expect(results[1].reason).toMatchObject({
+        name: 'RepositoryPendingIdentityMigrationError',
+        code: 'pending-identity-migration',
+        operation: 'delete',
+      });
+      expect(storage.snapshot()).toEqual(initialValues);
+      expect(storage.setCalls).toEqual([]);
+      expect(storage.removeCalls).toEqual([]);
+      await expect(firstRepository.get(existing.pageKey)).resolves.toEqual(
+        existing,
+      );
+      await expect(
+        secondRepository.listByOrigin(existing.origin),
+      ).resolves.toEqual([existing]);
+
+      await storage.remove(IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY);
+      storage.resetCalls();
+
+      await expect(firstRepository.put(added)).resolves.toBeUndefined();
+      await expect(
+        secondRepository.delete(existing.pageKey),
+      ).resolves.toBeUndefined();
+      expect(storage.snapshot()).toHaveProperty(
+        getNoteStorageKey(added.pageKey),
+        added,
+      );
+      expect(storage.snapshot()).not.toHaveProperty(
+        getNoteStorageKey(existing.pageKey),
+      );
+    },
+  );
+
+  it('uses the stable typed pending-migration error for physical deletes', () => {
+    const error = new RepositoryPendingIdentityMigrationError('delete');
+
+    expect(error).toMatchObject({
+      name: 'RepositoryPendingIdentityMigrationError',
+      code: 'pending-identity-migration',
+      operation: 'delete',
+    });
+    expect(error.message).not.toContain('https://');
   });
 
   it('uses deterministic code-unit ordering for origin and all-record listings', async () => {

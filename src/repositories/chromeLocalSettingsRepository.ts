@@ -4,6 +4,7 @@ import {
   type SettingsRecordV0,
   type SettingsRecordV1,
 } from '../domain/settings';
+import { IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY } from '../services/identityMigrationPersistence';
 import type { SettingsRepository } from './settingsRepository';
 import {
   enqueueStorageOperation,
@@ -13,6 +14,7 @@ import {
   type PromiseChromeStorageArea,
 } from './chromeStorage';
 import {
+  RepositoryPendingIdentityMigrationError,
   RepositoryStoredDataError,
   RepositoryValidationError,
 } from './repositoryErrors';
@@ -115,9 +117,19 @@ export class ChromeLocalSettingsRepository implements SettingsRepository {
     return this.#enqueue(async () => {
       const stored = await storageGet(
         this.#storageArea,
-        SETTINGS_STORAGE_KEY,
+        [IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY, SETTINGS_STORAGE_KEY],
         'put',
       );
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          stored,
+          IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY,
+        )
+      ) {
+        throw new RepositoryPendingIdentityMigrationError('put');
+      }
+
       const existingValue = stored[SETTINGS_STORAGE_KEY];
 
       if (

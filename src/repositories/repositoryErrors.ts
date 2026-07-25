@@ -33,6 +33,19 @@ export class RepositoryStoredDataError extends Error {
   }
 }
 
+export class RepositoryPendingIdentityMigrationError extends Error {
+  readonly code = 'pending-identity-migration';
+  readonly operation: Extract<RepositoryOperation, 'delete' | 'put'>;
+
+  constructor(operation: Extract<RepositoryOperation, 'delete' | 'put'>) {
+    super(
+      'PagePerch data cannot be changed while an identity migration is pending. Retry after the migration finishes.',
+    );
+    this.name = 'RepositoryPendingIdentityMigrationError';
+    this.operation = operation;
+  }
+}
+
 export class RepositoryStorageError extends Error {
   readonly operation: RepositoryOperation;
 
