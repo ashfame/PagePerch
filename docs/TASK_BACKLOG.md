@@ -142,3 +142,14 @@
 - Suggested files: settings domain/repository, options UI, side-panel app/editor/styles, focused tests
 - Test expectations: Settings default/validation/atomic-update cases; options and side-panel component cases; editor capability/style assertions; complete repository gate
 - Notes: Independently approved after two corrective review cycles. The brand row now owns one right-aligned link-like Settings control; the preferences card and normal page/editor headings, URL context, loading copy, borders, toolbar, inserter, and button chrome are gone. Blank notes hydrate one real paragraph without initialization saves, repeated identical Gutenberg callbacks are de-duplicated, keyboard type/undo/redo works, and long notes grow the document without an inner editor scroller. The strict current settings shape adds a default-off atomic recent-root preference; disabled, failed-load, and StrictMode paths create no index connection or session. A subtle light/dark diagonal gutter and reduced padding retain separation. Essential local errors/retries and quiet passive save/sync status remain. The complete 956-test/build/audit/browser gate passes, including packaged keyboard editing/history/growth/reload/restart and default-off then opted-in exact-origin index behavior.
+
+## PP-012 — Cut the 0.1.1 Minor Update
+
+- Status: completed
+- Priority: P0
+- Dependencies: PP-011
+- Spec or plan references: User-requested 0.1.1 package and standing minor-update tag convention
+- Acceptance criteria: Package, lockfile, and Chrome manifest versions agree at `0.1.1`; release documentation classifies this and future version tags as “Minor update”; the complete release gate passes; one deterministic `pageperch-0.1.1.zip` plus matching strict checksum is produced; the source commit is annotated with `v0.1.1` and both commit and tag are pushed.
+- Suggested files: version metadata, deployment/release documentation, orchestration state
+- Test expectations: Complete `npm run check`, `npm run release:package`, exact archive/checksum cardinality and names, strict checksum verification, ZIP integrity, manifest/package version inspection, clean source/tag verification
+- Notes: The version-only worker change was independently approved with all four bindings at `0.1.1` and no lockfile dependency drift. The complete 956-test/build/audit/browser gate passes. Two packaging runs produced the same 5,034,218-byte archive with SHA-256 `ddf8222c2308c7c4794b18e3cf9b5448f13aed56bf094b57dffda31e808e71d0`; strict checksum, ZIP integrity, embedded manifest version, and exact two-file `0.1.1` cardinality checks pass. Main orchestrator owns the release commit, annotated tag, push, and final handoff.

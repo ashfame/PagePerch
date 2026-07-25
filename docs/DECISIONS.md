@@ -127,3 +127,11 @@
 - Options considered: Keep the prior multi-card panel; hide controls only with CSS while leaving blank notes appender-dependent; make the index visually hidden but still connected; use a persisted opt-in and a genuinely editable control-free document.
 - Consequences: The panel has reduced spacing and a subtle theme-aware diagonal gutter around the borderless editor. Blank hydration and repeated initialization callbacks do not create a stored note, the first distinct serialization saves once, identical callbacks are ignored, keyboard undo/redo remains available, and long content expands the document instead of creating an inner PagePerch scroller. The root index performs no query/subscription work while disabled or when settings cannot be read.
 - Follow-up tasks: Keep packaged keyboard/history/growth and default-off/opt-in index coverage whenever the pinned Gutenberg package or panel layout changes.
+
+## 2026-07-25 — Classify Version Tags as Minor Updates
+
+- Decision: Annotate every PagePerch version tag as `PagePerch <version> — Minor update` unless the user explicitly changes the standing release convention.
+- Context: The user requested that PagePerch releases always be tagged as minor updates, beginning with `v0.1.1`.
+- Options considered: Use only the semantic version as the annotation; infer a label from each semantic-version component; keep the requested human-facing classification as a stable tag convention.
+- Consequences: Git tags retain exact `v<version>` identifiers while their annotations consistently communicate “Minor update”; package and Chrome manifest versions continue to use valid numeric version strings.
+- Follow-up tasks: Apply the convention when cutting every future version tag and update this decision if the requested release classification changes.

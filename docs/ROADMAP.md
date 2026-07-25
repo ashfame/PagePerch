@@ -35,3 +35,9 @@ Deliver unpacked-extension Playwright flows, production CSP/package audits, full
 Status: completed.
 
 Simplify the side-panel header and writing surface, make the root recent-note index explicitly opt-in, reduce panel spacing, and distinguish the editor with a restrained theme-aware diagonal background while preserving failure recovery and automatic local/BYOS behavior.
+
+## M6 — 0.1.1 Minor Update
+
+Status: completed.
+
+Bind the accepted PP-011 product state to version `0.1.1`, classify its annotated release tag as a minor update under the standing release-label convention, and produce a fully audited deterministic ZIP and checksum for manual installation.
