@@ -152,7 +152,9 @@ function encodeBase64Url(bytes: Uint8Array): string {
   return encoded;
 }
 
-async function createPageKey(canonicalUrl: string): Promise<string> {
+export async function createPageIdentityKey(
+  canonicalUrl: string,
+): Promise<string> {
   const digest = await crypto.subtle.digest(
     'SHA-256',
     new TextEncoder().encode(canonicalUrl),
@@ -161,50 +163,57 @@ async function createPageKey(canonicalUrl: string): Promise<string> {
   return encodeBase64Url(new Uint8Array(digest));
 }
 
+export async function derivePageIdentity(
+  rawUrl: string,
+  customExclusions: readonly PageIdentityExclusionRule[] = [],
+): Promise<PageIdentityResult> {
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(rawUrl);
+  } catch {
+    return {
+      status: 'unsupported',
+      reason: 'invalid-url',
+    };
+  }
+
+  if (!isSupportedProtocol(parsedUrl.protocol)) {
+    return {
+      status: 'unsupported',
+      reason: 'unsupported-scheme',
+      protocol: parsedUrl.protocol,
+    };
+  }
+
+  // Product decision: a page keeps one note when parameters declared not to make it unique are removed.
+  const meaningfulQuery = canonicalizeQuery(
+    parsedUrl,
+    getCustomExclusionsForOrigin(parsedUrl.origin, customExclusions),
+  );
+  const canonicalUrl = `${parsedUrl.origin}${parsedUrl.pathname}${
+    meaningfulQuery === '' ? '' : `?${meaningfulQuery}`
+  }`;
+
+  return {
+    status: 'supported',
+    identity: {
+      canonicalUrl,
+      isRoot: parsedUrl.pathname === '/' && meaningfulQuery === '',
+      origin: parsedUrl.origin,
+      pageKey: await createPageIdentityKey(canonicalUrl),
+      pathname: parsedUrl.pathname,
+    },
+  };
+}
+
 export class DefaultPageIdentityService implements PageIdentityService {
   readonly builtInExclusions = BUILT_IN_PAGE_IDENTITY_EXCLUSIONS;
 
-  async identify(
+  identify(
     rawUrl: string,
     customExclusions: readonly PageIdentityExclusionRule[] = [],
   ): Promise<PageIdentityResult> {
-    let parsedUrl: URL;
-
-    try {
-      parsedUrl = new URL(rawUrl);
-    } catch {
-      return {
-        status: 'unsupported',
-        reason: 'invalid-url',
-      };
-    }
-
-    if (!isSupportedProtocol(parsedUrl.protocol)) {
-      return {
-        status: 'unsupported',
-        reason: 'unsupported-scheme',
-        protocol: parsedUrl.protocol,
-      };
-    }
-
-    // Product decision: a page keeps one note when parameters declared not to make it unique are removed.
-    const meaningfulQuery = canonicalizeQuery(
-      parsedUrl,
-      getCustomExclusionsForOrigin(parsedUrl.origin, customExclusions),
-    );
-    const canonicalUrl = `${parsedUrl.origin}${parsedUrl.pathname}${
-      meaningfulQuery === '' ? '' : `?${meaningfulQuery}`
-    }`;
-
-    return {
-      status: 'supported',
-      identity: {
-        canonicalUrl,
-        isRoot: parsedUrl.pathname === '/' && meaningfulQuery === '',
-        origin: parsedUrl.origin,
-        pageKey: await createPageKey(canonicalUrl),
-        pathname: parsedUrl.pathname,
-      },
-    };
+    return derivePageIdentity(rawUrl, customExclusions);
   }
 }

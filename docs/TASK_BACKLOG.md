@@ -57,14 +57,14 @@
 
 ## PP-004 — Add Per-Page Editor and Origin Index
 
-- Status: not started
+- Status: in progress
 - Priority: P0
 - Dependencies: PP-003B
 - Spec or plan references: Side panel; editor modes; theme and accessibility requirements
 - Acceptance criteria: Active-tab changes remount documents after flushing; cached notes load; Gutenberg is locally bundled with remote APIs and disallowed capabilities disabled; autosave uses 750 ms debounce and explicit states; clearing behavior is correct; roots display a recent exact-origin index; themes, focus, reduced motion, narrow layouts, and link behavior meet the plan.
 - Suggested files: `src/side-panel/`, editor adapter, navigation bridge, component tests
 - Test expectations: React Testing Library coverage of unsupported/loading/error/editor/index/autosave/theme/mode flows
-- Notes: Production build must continue to pass CSP audit after editor integration.
+- Notes: PP-004A is accepted: a UI-neutral active-page session controller now owns current-window tab resolution, conventional/SPA update ordering, full canonical-identity verification, stale-work suppression, and exactly ordered pending-save flushes before document transitions. Chrome/React composition, the actual restricted editor, autosave/status UI, and root index remain. Production build must continue to pass CSP audit after editor integration.
 
 ## PP-005 — Add Identity Settings and Migrations
 
