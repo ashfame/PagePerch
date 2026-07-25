@@ -1,15 +1,30 @@
-import { useCallback, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+  type ComponentType,
+} from 'react';
 import IsolatedBlockEditor, {
   EditorLoaded,
 } from '@automattic/isolated-block-editor';
 import '@automattic/isolated-block-editor/build-browser/core.css';
 import apiFetch from '@wordpress/api-fetch';
+import { parse as parseSerializedBlocks } from '@wordpress/block-serialization-default-parser';
+// @ts-expect-error WordPress ships declarations without exposing them in its package metadata.
+import * as wordpressBlockEditor from '@wordpress/block-editor';
 // @ts-expect-error WordPress ships declarations without exposing them in its package metadata.
 import * as wordpressBlocks from '@wordpress/blocks';
+import { useRegistry } from '@wordpress/data';
 import { RichTextData } from '@wordpress/rich-text';
 
 import type { EditorMode } from '../domain/settings';
 import './PageNoteEditor.css';
+import {
+  PAGE_NOTE_EDITOR_STYLES,
+  type PageNoteEditorStyleAsset,
+} from './PageNoteEditorStyles';
 
 interface BlockValue {
   readonly name: string;
@@ -24,11 +39,38 @@ interface WordPressBlocksApi {
     attributes?: Readonly<Record<string, unknown>>,
     innerBlocks?: readonly BlockValue[],
   ) => BlockValue;
+  readonly hasBlockSupport: (
+    blockName: string,
+    feature: 'splitting',
+    defaultValue: false,
+  ) => boolean;
+  readonly pasteHandler: (options: {
+    readonly HTML: string;
+    readonly plainText?: string;
+    readonly mode: 'BLOCKS';
+  }) => BlockValue[] | string;
   readonly serialize: (blocks: readonly BlockValue[]) => string;
+  readonly switchToBlockType: (
+    block: BlockValue,
+    blockName: string,
+  ) => BlockValue[] | null;
 }
 
-const { createBlock, serialize } =
-  wordpressBlocks as unknown as WordPressBlocksApi;
+interface WordPressBlockEditorApi {
+  readonly __unstableEditorStyles?: ComponentType<{
+    readonly styles: readonly PageNoteEditorStyleAsset[];
+  }>;
+}
+
+const {
+  createBlock,
+  hasBlockSupport,
+  pasteHandler,
+  serialize,
+  switchToBlockType,
+} = wordpressBlocks as unknown as WordPressBlocksApi;
+const { __unstableEditorStyles: GutenbergEditorStyles } =
+  wordpressBlockEditor as unknown as WordPressBlockEditorApi;
 
 type ParseBlocks = (content: string) => unknown;
 type HandleRawHtml = (options: { readonly HTML: string }) => unknown;
@@ -58,7 +100,6 @@ const TEXT_FOCUSED_BLOCKS = [
   'core/separator',
 ] as const;
 const PARAGRAPH_ONLY_BLOCKS = ['core/paragraph'] as const;
-const BLOCK_COMMENT_PATTERN = /<!--\s*\/?wp:/u;
 const EMPTY_ITEMS = Object.freeze([]) as readonly never[];
 const NO_LINK_SUGGESTIONS = (): readonly never[] => EMPTY_ITEMS;
 const UNSAFE_CONTENT_PLACEHOLDER = 'Unsupported content was removed.';
@@ -98,6 +139,47 @@ class UnsafeStoredContentError extends Error {
     super(message);
     this.name = 'UnsafeStoredContentError';
   }
+}
+
+function countSerializedBlocks(
+  blocks: ReturnType<typeof parseSerializedBlocks>,
+  depth = 0,
+  count = { value: 0 },
+): boolean {
+  if (depth > MAX_BLOCK_DEPTH) {
+    throw new UnsafeStoredContentError(
+      'The serialized note exceeds the safe block nesting limit.',
+    );
+  }
+
+  let containsNamedBlock = false;
+
+  for (const block of blocks) {
+    count.value += 1;
+
+    if (count.value > MAX_BLOCK_COUNT) {
+      throw new UnsafeStoredContentError(
+        'The serialized note exceeds the safe block count limit.',
+      );
+    }
+
+    const containsNamedInnerBlock = countSerializedBlocks(
+      block.innerBlocks,
+      depth + 1,
+      count,
+    );
+    containsNamedBlock =
+      block.blockName !== null || containsNamedInnerBlock || containsNamedBlock;
+  }
+
+  return containsNamedBlock;
+}
+
+// The direct default parser owns recognition of Gutenberg's block-comment
+// grammar. @wordpress/blocks materializes blocks only after this bounded pass.
+// eslint-disable-next-line react-refresh/only-export-components
+export function isSerializedGutenbergDocument(content: string): boolean {
+  return countSerializedBlocks(parseSerializedBlocks(content));
 }
 
 function decodeHtmlEntities(value: string): string {
@@ -635,7 +717,7 @@ interface PageNoteEditorCapabilitiesShape {
     maxUploadFileSize: number;
     reusableBlocks: readonly never[];
     richEditingEnabled: boolean;
-    styles: readonly never[];
+    styles: readonly PageNoteEditorStyleAsset[];
     template: null;
     templateLock: null;
   };
@@ -732,7 +814,7 @@ function createCapabilities(
       maxUploadFileSize: 0,
       reusableBlocks: [],
       richEditingEnabled: true,
-      styles: [],
+      styles: PAGE_NOTE_EDITOR_STYLES,
       template: null,
       templateLock: null,
     },
@@ -770,6 +852,42 @@ interface SerializedMutation {
   readonly contentHtml: string;
 }
 
+interface RootInsertionSelectors {
+  readonly canInsertBlockType: (
+    blockName: string,
+    rootClientId: string | undefined,
+  ) => boolean;
+  readonly getBlockName: (clientId: string) => string | undefined;
+}
+
+interface BlockEditorSelectors extends RootInsertionSelectors {
+  readonly __unstableIsFullySelected: () => boolean;
+  readonly getBlockRootClientId: (clientId: string) => string | undefined;
+  readonly getSelectionEnd: () => {
+    readonly clientId?: string;
+    readonly offset?: number;
+  };
+  readonly getSelectionStart: () => {
+    readonly clientId?: string;
+    readonly offset?: number;
+  };
+  readonly getSelectedBlockClientIds: () => string[];
+  readonly hasMultiSelection: () => boolean;
+}
+
+interface BlockEditorRegistry {
+  readonly select: (storeName: 'core/block-editor') => BlockEditorSelectors;
+  readonly dispatch: (storeName: 'core/block-editor') => {
+    readonly __unstableSplitSelection: (blocks: readonly BlockValue[]) => void;
+    readonly replaceBlocks: (
+      clientIds: readonly string[],
+      blocks: readonly BlockValue[],
+      indexToSelect: number,
+      initialPosition: -1,
+    ) => void;
+  };
+}
+
 function normalizeEditorError(error: unknown): Error {
   if (error instanceof Error) {
     return error;
@@ -792,6 +910,189 @@ function hasInitialContentMarker(values: readonly unknown[]): boolean {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
+export function adaptStructuredBlocksToRoot(
+  blocks: readonly BlockValue[],
+  rootClientId: string | undefined,
+  selectors: RootInsertionSelectors,
+): BlockValue[] | null {
+  const adapted: BlockValue[] = [];
+
+  for (const block of blocks) {
+    if (selectors.canInsertBlockType(block.name, rootClientId)) {
+      adapted.push(block);
+      continue;
+    }
+
+    if (rootClientId === undefined) {
+      return null;
+    }
+
+    const rootBlockName = selectors.getBlockName(rootClientId);
+    if (rootBlockName === undefined) {
+      return null;
+    }
+
+    const switchedBlocks =
+      block.name === rootBlockName
+        ? [block]
+        : switchToBlockType(block, rootBlockName);
+
+    if (switchedBlocks === null || switchedBlocks.length === 0) {
+      return null;
+    }
+
+    for (const switchedBlock of switchedBlocks) {
+      if (switchedBlock.innerBlocks.length === 0) {
+        return null;
+      }
+
+      for (const innerBlock of switchedBlock.innerBlocks) {
+        if (!selectors.canInsertBlockType(innerBlock.name, rootClientId)) {
+          return null;
+        }
+        adapted.push(innerBlock);
+      }
+    }
+  }
+
+  return adapted.length === 0 ? null : adapted;
+}
+
+function RichPasteBridge({
+  editorMode,
+  editorRootRef,
+  onError,
+}: {
+  readonly editorMode: EditorMode;
+  readonly editorRootRef: RefObject<HTMLElement | null>;
+  readonly onError: (error?: unknown) => void;
+}) {
+  const registry = useRegistry() as unknown as BlockEditorRegistry;
+
+  useEffect(() => {
+    const editorRoot = editorRootRef.current;
+
+    if (editorRoot === null) {
+      return;
+    }
+
+    const handleRichPaste = (event: ClipboardEvent): void => {
+      const target = event.target;
+      const html = event.clipboardData?.getData('text/html') ?? '';
+
+      if (
+        event.defaultPrevented ||
+        !(target instanceof Node) ||
+        !editorRoot.contains(target) ||
+        html.trim() === ''
+      ) {
+        return;
+      }
+
+      try {
+        const editor = registry.select('core/block-editor');
+        const selectedClientIds = editor.getSelectedBlockClientIds();
+        const firstSelectedClientId = selectedClientIds[0];
+        if (firstSelectedClientId === undefined) {
+          return;
+        }
+
+        const converted = pasteHandler({
+          HTML: html,
+          plainText: event.clipboardData?.getData('text/plain'),
+          mode: 'BLOCKS',
+        });
+
+        if (typeof converted === 'string' || converted.length === 0) {
+          return;
+        }
+
+        const isStructuredPaste =
+          converted.length > 1 || converted[0]?.name !== 'core/paragraph';
+
+        // Native Gutenberg owns inline insertion. This bridge guarantees
+        // structured conversion in the pinned isolated-editor integration only
+        // when clipboard HTML would otherwise lose its block structure.
+        if (!isStructuredPaste) {
+          return;
+        }
+
+        const blocks = sanitizeBlocks(converted, editorMode);
+        const rootClientId = editor.getBlockRootClientId(firstSelectedClientId);
+        const isFullySelected = editor.__unstableIsFullySelected();
+        const selectionStart = editor.getSelectionStart();
+        const selectionEnd = editor.getSelectionEnd();
+
+        if (
+          !isFullySelected &&
+          (selectionStart.clientId === undefined ||
+            selectionEnd.clientId === undefined ||
+            selectionStart.offset === undefined ||
+            selectionEnd.offset === undefined ||
+            editor.getBlockRootClientId(selectionStart.clientId) !==
+              rootClientId ||
+            editor.getBlockRootClientId(selectionEnd.clientId) !==
+              rootClientId ||
+            (!editor.hasMultiSelection() &&
+              !hasBlockSupport(
+                editor.getBlockName(firstSelectedClientId) ?? '',
+                'splitting',
+                false,
+              )))
+        ) {
+          return;
+        }
+
+        const adaptedBlocks = adaptStructuredBlocksToRoot(
+          blocks,
+          rootClientId,
+          editor,
+        );
+
+        if (adaptedBlocks === null) {
+          return;
+        }
+
+        const actions = registry.dispatch('core/block-editor');
+        if (isFullySelected) {
+          actions.replaceBlocks(
+            selectedClientIds,
+            adaptedBlocks,
+            adaptedBlocks.length - 1,
+            -1,
+          );
+        } else {
+          actions.__unstableSplitSelection(adaptedBlocks);
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+      } catch (error) {
+        onError(error);
+      }
+    };
+
+    editorRoot.addEventListener('paste', handleRichPaste, { capture: true });
+
+    return () => {
+      editorRoot.removeEventListener('paste', handleRichPaste, {
+        capture: true,
+      });
+    };
+  }, [editorMode, editorRootRef, onError, registry]);
+
+  return null;
+}
+
+function PageNoteEditorStyleInjector() {
+  if (GutenbergEditorStyles === undefined) {
+    throw new Error('The Gutenberg editor style injector is unavailable.');
+  }
+
+  return <GutenbergEditorStyles styles={PAGE_NOTE_EDITOR_STYLES} />;
+}
+
 function PageNoteEditorRuntime({
   initialContentHtml,
   editorMode,
@@ -812,6 +1113,7 @@ function PageNoteEditorRuntime({
   const lastScheduledMutationVersionRef = useRef(0);
   const queuedMutationRef = useRef<SerializedMutation | null>(null);
   const lastSerializedMutationRef = useRef<string>();
+  const editorRootRef = useRef<HTMLElement>(null);
 
   const reportError = useCallback(
     (error?: unknown) => {
@@ -890,7 +1192,7 @@ function PageNoteEditorRuntime({
           content.trim() === ''
             ? [makeBlock('core/paragraph')]
             : sanitizeBlocks(
-                BLOCK_COMMENT_PATTERN.test(content)
+                isSerializedGutenbergDocument(content)
                   ? parse(content)
                   : rawHandler({ HTML: content }),
                 editorMode,
@@ -976,6 +1278,7 @@ function PageNoteEditorRuntime({
 
   return (
     <section
+      ref={editorRootRef}
       className="page-note-editor"
       aria-label="Page note editor"
       aria-busy={fatalLoadError === null && !isLoaded}
@@ -997,7 +1300,13 @@ function PageNoteEditorRuntime({
             __experimentalOnInput={handleEditorMutation}
             __experimentalOnChange={handleEditorMutation}
           >
+            <PageNoteEditorStyleInjector />
             <EditorLoaded onLoading={handleLoading} onLoaded={handleReady} />
+            <RichPasteBridge
+              editorMode={editorMode}
+              editorRootRef={editorRootRef}
+              onError={reportError}
+            />
           </IsolatedBlockEditor>
         </div>
       ) : null}

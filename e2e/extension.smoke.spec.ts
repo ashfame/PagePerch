@@ -479,6 +479,20 @@ async function focusWithKeyboard(
   );
 }
 
+async function copyElementWithTrustedKeyboard(
+  page: Page,
+  selector: string,
+): Promise<void> {
+  await page.locator(selector).evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  });
+  await page.keyboard.press('Control+c');
+}
+
 test('loads the unpacked module worker and both branded React surfaces', async () => {
   const session = await launchExtension();
 
@@ -680,6 +694,7 @@ test('opens the packaged editor for a supported HTTP tab without fatal runtime e
     const shortNoteLayout = await root.evaluate((rootElement) => {
       const editorRegion = rootElement.closest('.page-note-editor');
       const noteArea = rootElement.closest('.note-editor-area');
+      const pageShell = rootElement.closest('.page-document-shell');
       const status = noteArea?.querySelector('.note-status');
       const lastBlock = [...rootElement.children]
         .filter((element) => element.matches('.wp-block'))
@@ -687,6 +702,8 @@ test('opens the packaged editor for a supported HTTP tab without fatal runtime e
 
       if (
         editorRegion === null ||
+        noteArea === null ||
+        pageShell === null ||
         status === null ||
         status === undefined ||
         lastBlock === undefined
@@ -695,18 +712,62 @@ test('opens the packaged editor for a supported HTTP tab without fatal runtime e
       }
 
       const editorBounds = editorRegion.getBoundingClientRect();
+      const noteAreaBounds = noteArea.getBoundingClientRect();
+      const pageShellBounds = pageShell.getBoundingClientRect();
+      const rootBounds = rootElement.getBoundingClientRect();
       const lastBlockBounds = lastBlock.getBoundingClientRect();
       const statusBounds = status.getBoundingClientRect();
+      const noteAreaStyles = getComputedStyle(noteArea);
+      const injectedWritingStyles = [...document.querySelectorAll('style')]
+        .map((style) => style.textContent ?? '')
+        .filter((content) =>
+          content.includes('--pageperch-writing-quote-border'),
+        );
 
       return {
         canvasBelowLastBlock: editorBounds.bottom - lastBlockBounds.bottom,
+        editorBottom: editorBounds.bottom,
+        editorHeight: editorBounds.height,
+        editorTop: editorBounds.top,
+        injectedWritingStyleCount: injectedWritingStyles.length,
+        noteAreaBottom: noteAreaBounds.bottom,
+        noteAreaTop: noteAreaBounds.top,
+        pageShellBottom: pageShellBounds.bottom,
+        rootBottom: rootBounds.bottom,
+        rootTop: rootBounds.top,
+        statusTop: statusBounds.top,
         statusBottom: statusBounds.bottom,
+        verticalGap: Number.parseFloat(noteAreaStyles.rowGap),
         viewportHeight: window.innerHeight,
       };
     });
-    expect(shortNoteLayout.canvasBelowLastBlock).toBeGreaterThan(24);
-    expect(shortNoteLayout.statusBottom).toBeLessThanOrEqual(
-      shortNoteLayout.viewportHeight + 1,
+    expect(shortNoteLayout.injectedWritingStyleCount).toBe(1);
+    expect(shortNoteLayout.editorHeight).toBeGreaterThan(450);
+    expect(shortNoteLayout.canvasBelowLastBlock).toBeGreaterThan(350);
+    expect(
+      Math.abs(shortNoteLayout.editorTop - shortNoteLayout.noteAreaTop),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(shortNoteLayout.rootTop - shortNoteLayout.editorTop),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(shortNoteLayout.rootBottom - shortNoteLayout.editorBottom),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(
+        shortNoteLayout.statusTop -
+          shortNoteLayout.editorBottom -
+          shortNoteLayout.verticalGap,
+      ),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(shortNoteLayout.noteAreaBottom - shortNoteLayout.statusBottom),
+    ).toBeLessThanOrEqual(1);
+    expect(shortNoteLayout.pageShellBottom).toBeLessThanOrEqual(
+      shortNoteLayout.viewportHeight - 7,
+    );
+    expect(shortNoteLayout.pageShellBottom).toBeGreaterThanOrEqual(
+      shortNoteLayout.viewportHeight - 9,
     );
     await expect(
       panelPage.getByText('This note could not be opened safely'),
@@ -715,6 +776,418 @@ test('opens the packaged editor for a supported HTTP tab without fatal runtime e
     await expect
       .poll(() => ({ consoleErrors, pageErrors }))
       .toEqual({ consoleErrors: [], pageErrors: [] });
+  } finally {
+    await closeExtension(session);
+  }
+});
+
+test('converts a trusted rich browser copy into styled Gutenberg blocks and persists them', async () => {
+  test.setTimeout(45_000);
+  const session = await launchExtension();
+  const fixtureUrl = 'https://pageperch.test/rich-paste-fixture';
+  const fixtureTitle = 'PagePerch rich paste fixture';
+  const noteProbe = storedNote(fixtureUrl, fixtureTitle, '');
+
+  try {
+    await session.page.route(fixtureUrl, async (route) => {
+      await route.fulfill({
+        body: `<!doctype html>
+          <html>
+            <head><title>${fixtureTitle}</title></head>
+            <body>
+              <article id="rich-source" tabindex="0">
+                <h2 class="source-heading" style="color: red">Trusted rich heading</h2>
+                <p class="source-copy">Body with <strong>trusted bold</strong>, <em>trusted emphasis</em>, <mark>trusted mark</mark>, <kbd>Ctrl+S</kbd>, H<sub>2</sub>O, and a <a href="https://safe.example/paste" style="color: red">trusted safe link</a>.</p>
+                <ul><li>Trusted first item</li><li>Trusted second item</li></ul>
+                <blockquote><p>Trusted quotation</p><cite>Trusted citation</cite></blockquote>
+                <pre><code>const trustedPaste = true;</code></pre>
+                <hr>
+              </article>
+            </body>
+          </html>`,
+        contentType: 'text/html',
+        status: 200,
+      });
+    });
+    await session.page.goto(fixtureUrl);
+    await session.page.evaluate(() => {
+      Object.assign(window, {
+        __pageperchCopyEvidence: undefined,
+      });
+      document.addEventListener(
+        'copy',
+        (event) => {
+          Object.assign(window, {
+            __pageperchCopyEvidence: {
+              isTrusted: event.isTrusted,
+            },
+          });
+        },
+        { once: true },
+      );
+    });
+
+    const panelPage = await session.context.newPage();
+    await panelPage.setViewportSize({ width: 280, height: 720 });
+    await panelPage.emulateMedia({ colorScheme: 'light' });
+    await panelPage.goto(
+      `chrome-extension://${session.extensionId}/side-panel.html`,
+    );
+    await activateTabForUrl(session.serviceWorker, fixtureUrl);
+    const editable = await expectSimplifiedEditorReady(
+      panelPage,
+      fixtureUrl,
+      fixtureTitle,
+    );
+
+    await session.page.locator('#rich-source').focus();
+    await session.page.keyboard.press('Control+a');
+    await session.page.keyboard.press('Control+c');
+    await expect
+      .poll(() =>
+        session.page.evaluate(
+          () =>
+            (
+              window as typeof window & {
+                __pageperchCopyEvidence?: {
+                  readonly isTrusted: boolean;
+                };
+              }
+            ).__pageperchCopyEvidence,
+        ),
+      )
+      .toMatchObject({
+        isTrusted: true,
+      });
+
+    await panelPage.evaluate(() => {
+      Object.assign(window, {
+        __pageperchPasteEvidence: undefined,
+      });
+      document.addEventListener(
+        'paste',
+        (event) => {
+          Object.assign(window, {
+            __pageperchPasteEvidence: {
+              isTrusted: event.isTrusted,
+              types: [...(event.clipboardData?.types ?? [])],
+            },
+          });
+        },
+        { capture: true, once: true },
+      );
+    });
+    await editable.click();
+    await panelPage.keyboard.press('Control+v');
+    await expect
+      .poll(() =>
+        panelPage.evaluate(
+          () =>
+            (
+              window as typeof window & {
+                __pageperchPasteEvidence?: {
+                  readonly isTrusted: boolean;
+                  readonly types: readonly string[];
+                };
+              }
+            ).__pageperchPasteEvidence,
+        ),
+      )
+      .toMatchObject({
+        isTrusted: true,
+        types: expect.arrayContaining(['text/html']),
+      });
+
+    const editor = panelPage.getByRole('region', {
+      name: 'Page note editor',
+    });
+    const headingBlock = editor.locator('[data-type="core/heading"]');
+    const listBlock = editor.locator('[data-type="core/list"]');
+    const quoteBlock = editor.locator('[data-type="core/quote"]');
+    const codeBlock = editor.locator('[data-type="core/code"]');
+    const separatorBlock = editor.locator('[data-type="core/separator"]');
+    await expect(headingBlock).toContainText('Trusted rich heading');
+    await expect(listBlock).toContainText('Trusted first item');
+    await expect(listBlock).toContainText('Trusted second item');
+    await expect(quoteBlock).toContainText('Trusted quotation');
+    await expect(quoteBlock).toContainText('Trusted citation');
+    await expect(codeBlock).toContainText('const trustedPaste = true;');
+    await expect(separatorBlock).toBeVisible();
+    await expect(editor.locator('strong')).toHaveText('trusted bold');
+    await expect(editor.locator('em')).toHaveText('trusted emphasis');
+    await expect(editor.locator('mark')).toHaveText('trusted mark');
+    await expect(editor.locator('kbd')).toHaveText('Ctrl+S');
+    await expect(editor.locator('sub')).toHaveText('2');
+    const safeLink = editor.getByRole('link', { name: 'trusted safe link' });
+    await expect(safeLink).toHaveAttribute(
+      'href',
+      'https://safe.example/paste',
+    );
+
+    const computedWritingStyles = await editor.evaluate((editorElement) => {
+      const heading = editorElement.querySelector('h2');
+      const list = editorElement.querySelector('ul');
+      const quote = editorElement.querySelector('blockquote');
+      const code = editorElement.querySelector('pre');
+      const link = editorElement.querySelector('a');
+
+      if (
+        heading === null ||
+        list === null ||
+        quote === null ||
+        code === null ||
+        link === null
+      ) {
+        throw new Error('The rich-paste style fixture is incomplete.');
+      }
+
+      return {
+        codeBackground: getComputedStyle(code).backgroundColor,
+        codeBorderWidth: getComputedStyle(code).borderTopWidth,
+        headingFontWeight: getComputedStyle(heading).fontWeight,
+        headingLetterSpacing: getComputedStyle(heading).letterSpacing,
+        linkDecoration: getComputedStyle(link).textDecorationLine,
+        listStyleType: getComputedStyle(list).listStyleType,
+        quoteBorderWidth: getComputedStyle(quote).borderLeftWidth,
+        quoteFontStyle: getComputedStyle(quote).fontStyle,
+      };
+    });
+    expect(computedWritingStyles).toMatchObject({
+      codeBackground: 'rgb(237, 242, 238)',
+      codeBorderWidth: '1px',
+      headingFontWeight: '700',
+      linkDecoration: 'underline',
+      listStyleType: 'disc',
+      quoteBorderWidth: '3px',
+      quoteFontStyle: 'italic',
+    });
+    expect(
+      Number.parseFloat(computedWritingStyles.headingLetterSpacing),
+    ).toBeCloseTo(-0.36, 2);
+
+    await panelPage.emulateMedia({ colorScheme: 'dark' });
+    await expect
+      .poll(() =>
+        editor.evaluate((editorElement) => {
+          const wrapper = editorElement.querySelector('.editor-styles-wrapper');
+          const link = editorElement.querySelector('a');
+
+          return wrapper === null || link === null
+            ? undefined
+            : {
+                backgroundColor: getComputedStyle(wrapper).backgroundColor,
+                color: getComputedStyle(wrapper).color,
+                linkColor: getComputedStyle(link).color,
+              };
+        }),
+      )
+      .toEqual({
+        backgroundColor: 'rgb(16, 23, 18)',
+        color: 'rgb(238, 245, 240)',
+        linkColor: 'rgb(115, 206, 144)',
+      });
+
+    await expect
+      .poll(async () => {
+        const note = (await readStoredNote(
+          session.serviceWorker,
+          noteProbe,
+        )) as Partial<StoredNote> | undefined;
+        return note?.contentHtml;
+      })
+      .toMatch(
+        /wp:heading[\s\S]*wp:paragraph[\s\S]*wp:list[\s\S]*wp:quote[\s\S]*wp:code[\s\S]*wp:separator/u,
+      );
+    const stored = (await readStoredNote(
+      session.serviceWorker,
+      noteProbe,
+    )) as StoredNote;
+    expect(stored.contentHtml).toContain('<strong>trusted bold</strong>');
+    expect(stored.contentHtml).toContain('<em>trusted emphasis</em>');
+    expect(stored.contentHtml).toContain(
+      '<a href="https://safe.example/paste" rel="noopener noreferrer">trusted safe link</a>',
+    );
+    expect(stored.contentHtml).not.toMatch(
+      /class="source-|style=|onclick=|javascript:|data:/iu,
+    );
+
+    await panelPage.reload();
+    await expectSimplifiedEditorReady(panelPage, fixtureUrl, fixtureTitle);
+    await expect(panelPage.locator('[data-type="core/heading"]')).toContainText(
+      'Trusted rich heading',
+    );
+    await expect(panelPage.locator('[data-type="core/list"]')).toContainText(
+      'Trusted second item',
+    );
+    await expect(panelPage.locator('[data-type="core/quote"]')).toContainText(
+      'Trusted quotation',
+    );
+    await expect(panelPage.locator('[data-type="core/code"]')).toContainText(
+      'const trustedPaste = true;',
+    );
+    await expect(
+      panelPage.getByRole('link', { name: 'trusted safe link' }),
+    ).toHaveAttribute('href', 'https://safe.example/paste');
+  } finally {
+    await closeExtension(session);
+  }
+});
+
+test('replaces partial selections and preserves nested list roots during trusted structured paste', async () => {
+  test.setTimeout(45_000);
+  const session = await launchExtension();
+  const fixtureUrl = 'https://pageperch.test/selection-paste-fixture';
+  const fixtureTitle = 'PagePerch selection paste fixture';
+  const noteProbe = storedNote(fixtureUrl, fixtureTitle, '');
+
+  try {
+    await session.page.route(fixtureUrl, async (route) => {
+      await route.fulfill({
+        body: `<!doctype html>
+          <html>
+            <head><title>${fixtureTitle}</title></head>
+            <body>
+              <article id="partial-source">
+                <p>Trusted lead paragraph</p>
+                <h3>Trusted inserted heading</h3>
+                <ul><li>NestedBeforeAfter</li></ul>
+                <blockquote><p>Trusted inserted quote</p></blockquote>
+                <p>Trusted trailing paragraph</p>
+              </article>
+              <section id="nested-source">
+                <p>Nested alpha</p>
+                <p>Nested beta</p>
+              </section>
+            </body>
+          </html>`,
+        contentType: 'text/html',
+        status: 200,
+      });
+    });
+    await session.page.goto(fixtureUrl);
+
+    const panelPage = await session.context.newPage();
+    await panelPage.setViewportSize({ width: 280, height: 720 });
+    await panelPage.goto(
+      `chrome-extension://${session.extensionId}/side-panel.html`,
+    );
+    await activateTabForUrl(session.serviceWorker, fixtureUrl);
+    const editable = await expectSimplifiedEditorReady(
+      panelPage,
+      fixtureUrl,
+      fixtureTitle,
+    );
+
+    await copyElementWithTrustedKeyboard(session.page, '#partial-source');
+    await editable.click();
+    await panelPage.keyboard.type('BeforeAfter');
+    for (let index = 0; index < 5; index += 1) {
+      await panelPage.keyboard.press('Shift+ArrowLeft');
+    }
+    await panelPage.keyboard.press('Control+v');
+
+    const editor = panelPage.getByRole('region', {
+      name: 'Page note editor',
+    });
+    const root = editor.locator(
+      '.block-editor-block-list__layout.is-root-container',
+    );
+    const firstParagraph = root.locator('[data-type="core/paragraph"]').first();
+    await expect(firstParagraph).toContainText('Before');
+    await expect(firstParagraph).toContainText('Trusted lead paragraph');
+    await expect(firstParagraph).not.toContainText('After');
+    await expect(root.locator('[data-type="core/heading"]')).toContainText(
+      'Trusted inserted heading',
+    );
+    await expect(root.locator('[data-type="core/list"]')).toContainText(
+      'NestedBeforeAfter',
+    );
+    await expect(root.locator('[data-type="core/quote"]')).toContainText(
+      'Trusted inserted quote',
+    );
+    const partialOrder = await root.evaluate((rootElement) =>
+      [...rootElement.children]
+        .filter((element) => element.matches('[data-type]'))
+        .map((element) => ({
+          text: element.textContent ?? '',
+          type: element.getAttribute('data-type'),
+        })),
+    );
+    expect(partialOrder.map(({ type }) => type)).toEqual([
+      'core/paragraph',
+      'core/heading',
+      'core/list',
+      'core/quote',
+      'core/paragraph',
+    ]);
+
+    await panelPage.keyboard.press('Control+z');
+    await expect(root).toContainText('BeforeAfter');
+    await expect(root.locator('[data-type="core/heading"]')).toHaveCount(0);
+    await panelPage.keyboard.press('Control+Shift+z');
+    await expect(root.locator('[data-type="core/heading"]')).toContainText(
+      'Trusted inserted heading',
+    );
+    await expect(firstParagraph).not.toContainText('After');
+
+    await copyElementWithTrustedKeyboard(session.page, '#nested-source');
+    const nestedList = root.locator('[data-type="core/list"]').first();
+    const targetListItem = nestedList
+      .locator('[data-type="core/list-item"] [contenteditable="true"]')
+      .filter({ hasText: 'NestedBeforeAfter' })
+      .first();
+    await targetListItem.click();
+    await panelPage.keyboard.press('End');
+    for (let index = 0; index < 5; index += 1) {
+      await panelPage.keyboard.press('Shift+ArrowLeft');
+    }
+    await panelPage.keyboard.press('Control+v');
+
+    await expect(nestedList).toContainText('NestedBefore');
+    await expect(nestedList).toContainText('Nested alpha');
+    await expect(nestedList).toContainText('Nested beta');
+    await expect(nestedList).not.toContainText('After');
+    const nestedTypes = await nestedList
+      .locator('[data-type]')
+      .evaluateAll((elements) =>
+        elements.map((element) => element.getAttribute('data-type')),
+      );
+    expect(nestedTypes).not.toContain('core/paragraph');
+    expect(nestedTypes).not.toContain('core/heading');
+    expect(nestedTypes).toEqual(
+      expect.arrayContaining(['core/list-item', 'core/list-item']),
+    );
+
+    await expect
+      .poll(async () => {
+        const note = (await readStoredNote(
+          session.serviceWorker,
+          noteProbe,
+        )) as Partial<StoredNote> | undefined;
+        return note?.contentHtml;
+      })
+      .toMatch(
+        /Before[\s\S]*Trusted lead paragraph[\s\S]*Trusted inserted heading[\s\S]*NestedBefore[\s\S]*Nested alpha[\s\S]*Nested beta[\s\S]*Trusted inserted quote/u,
+      );
+    const stored = (await readStoredNote(
+      session.serviceWorker,
+      noteProbe,
+    )) as StoredNote;
+    expect(stored.contentHtml).not.toContain('NestedBeforeAfter');
+    expect(stored.contentHtml).toMatch(
+      /wp:list[\s\S]*wp:list-item[\s\S]*Nested alpha[\s\S]*wp:list-item[\s\S]*Nested beta/u,
+    );
+
+    await panelPage.reload();
+    await expectSimplifiedEditorReady(panelPage, fixtureUrl, fixtureTitle);
+    await expect(panelPage.locator('[data-type="core/heading"]')).toContainText(
+      'Trusted inserted heading',
+    );
+    const reloadedList = panelPage.locator('[data-type="core/list"]').first();
+    await expect(reloadedList).toContainText('NestedBefore');
+    await expect(reloadedList).toContainText('Nested alpha');
+    await expect(reloadedList).toContainText('Nested beta');
+    await expect(reloadedList).not.toContainText('After');
   } finally {
     await closeExtension(session);
   }

@@ -44,6 +44,18 @@ Bind the accepted PP-011 product state to version `0.1.1`, classify its annotate
 
 ## M7 — 0.1.2 Editor Canvas and Rich Paste
 
-Status: completed.
+Status: acceptance rejected after manual testing.
 
 Reduce the Gutenberg writing gutter, remove vertical writing-flow padding, give every supported text element coherent theme-aware editor styling, preserve safe semantic formatting when clipboard HTML becomes Gutenberg blocks, and let a short note fill the panel while keeping its passive status visible.
+
+## M8 — Correct the Editor Integration
+
+Status: completed.
+
+Replace the rejected superficial style and height assertions with real Gutenberg editor-style injection, a direct and used block-serialization parser dependency, trusted browser rich-paste coverage, and a strict short-note viewport-fill contract.
+
+## M9 — 0.1.3 Corrective Minor Update
+
+Status: in progress.
+
+Bind the accepted editor correction to version `0.1.3`, run the complete release gate, produce a deterministic audited ZIP and checksum, and publish the standing annotated minor-update tag without rewriting the rejected `v0.1.2` release.

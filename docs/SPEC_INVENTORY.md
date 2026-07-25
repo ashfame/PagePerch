@@ -14,7 +14,7 @@
 - Chrome Identity API: use `chrome.identity.getRedirectURL()` and `chrome.identity.launchWebAuthFlow()` for public-client OAuth.
 - Node.js release schedule: `https://nodejs.org/en/about/previous-releases`; the plan pins Node.js 24.18.0 and local nvm metadata confirms it as the available latest Krypton LTS.
 - Isolated Block Editor: `https://github.com/Automattic/isolated-block-editor`; use the scoped `@automattic/isolated-block-editor@2.30.0` package with `allowApi: false`, local Gutenberg CSS, and an early production CSP audit.
-- WordPress block serialization default parser: `https://developer.wordpress.org/block-editor/reference-guides/packages/packages-block-serialization-default-parser/`; the pinned Gutenberg graph uses it for stored comment-delimited block documents, while `@wordpress/blocks` raw/paste handling converts incoming semantic HTML into blocks.
+- WordPress block serialization default parser: `https://developer.wordpress.org/block-editor/reference-guides/packages/packages-block-serialization-default-parser/`; PagePerch pins it directly and uses it for stored comment-delimited block documents, while the separately pinned `@wordpress/blocks` raw/paste handling converts incoming semantic clipboard HTML into blocks and the directly pinned `@wordpress/block-editor` supplies the isolated writing style interface.
 
 ## Interpretation Rules
 

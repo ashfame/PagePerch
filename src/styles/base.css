@@ -114,6 +114,7 @@ button:active {
 }
 
 .side-panel-shell {
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   padding: 0.75rem;
@@ -169,7 +170,7 @@ button.settings-link:hover {
 .session-area {
   min-height: 0;
   display: flex;
-  flex: 1 0 auto;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 0.75rem;
 }
@@ -178,7 +179,7 @@ button.settings-link:hover {
   min-width: 0;
   min-height: 0;
   display: flex;
-  flex: 1 0 auto;
+  flex: 1 1 auto;
   flex-direction: column;
   padding: 0.5rem;
   border: 0;
@@ -295,14 +296,14 @@ button.settings-link:hover {
 .note-editor-area {
   min-height: 0;
   display: flex;
-  flex: 1 0 auto;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 0.875rem;
   min-width: 0;
 }
 
 .note-editor-area > .page-note-editor {
-  flex: 1 0 auto;
+  flex: 1 1 auto;
 }
 
 .note-editor-area > :where(.note-status, .sync-visibility-message) {
@@ -322,7 +323,7 @@ button.settings-link:hover {
 }
 
 .note-status {
-  margin-top: 0;
+  margin: 0;
 }
 
 .sync-visibility-message {

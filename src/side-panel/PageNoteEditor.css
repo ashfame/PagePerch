@@ -3,12 +3,7 @@
   --page-note-editor-canvas: #f8faf8;
   --page-note-editor-border: #c8d3cb;
   --page-note-editor-text: #17241b;
-  --page-note-editor-muted: #536158;
-  --page-note-editor-accent: #27623c;
   --page-note-editor-focus: #236fca;
-  --page-note-editor-code-background: #edf2ee;
-  --page-note-editor-mark-background: #fff0a8;
-  --page-note-editor-quote-border: #8aa091;
   --wp-admin-theme-color: #27623c;
   --wp-admin-theme-color--rgb: 39, 98, 60;
   --wp-admin-theme-color-darker-10: #174d2b;
@@ -26,9 +21,9 @@
   --wp-editor-background: #ffffff;
   --wp-editor-text-color: #17241b;
   min-width: 0;
-  min-height: 10rem;
+  min-height: 0;
   display: flex;
-  flex: 1 0 auto;
+  flex: 1 1 auto;
   flex-direction: column;
   color: var(--page-note-editor-text);
 }
@@ -46,9 +41,9 @@
 
 .page-note-editor__canvas {
   min-width: 0;
-  min-height: 10rem;
+  min-height: 0;
   display: flex;
-  flex: 1 0 auto;
+  flex: 1 1 auto;
   flex-direction: column;
   overflow: visible;
   border: 0;
@@ -59,6 +54,7 @@
 .page-note-editor__isolated,
 .page-note-editor__isolated .iso-editor,
 .page-note-editor__isolated .edit-post-layout,
+.page-note-editor__isolated > div,
 .page-note-editor__isolated .interface-interface-skeleton,
 .page-note-editor__isolated .interface-interface-skeleton__body,
 .page-note-editor__isolated .interface-interface-skeleton__editor,
@@ -72,13 +68,14 @@
 }
 
 .page-note-editor__isolated.iso-editor {
-  min-height: 10rem;
+  min-height: 0;
   display: flex;
-  flex: 1 0 auto;
+  flex: 1 1 auto;
   flex-direction: column;
   border: 0;
 }
 
+.page-note-editor__isolated > div,
 .page-note-editor__isolated .edit-post-layout,
 .page-note-editor__isolated .interface-interface-skeleton,
 .page-note-editor__isolated .interface-interface-skeleton__body,
@@ -89,10 +86,27 @@
 .page-note-editor__isolated .editor-styles-wrapper,
 .page-note-editor__isolated .block-editor-writing-flow,
 .page-note-editor__isolated .block-editor-block-list__layout.is-root-container {
-  min-height: 10rem;
+  min-height: 0;
   display: flex;
-  flex: 1 0 auto;
+  flex: 1 1 auto;
   flex-direction: column;
+}
+
+.page-note-editor__isolated .interface-interface-skeleton__content > div,
+.page-note-editor__isolated .edit-post-visual-editor__content-area,
+.page-note-editor__isolated .edit-post-visual-editor__content-area > div,
+.page-note-editor__isolated .edit-post-visual-editor__content-area > div > div {
+  min-height: 0;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.page-note-editor__isolated
+  .interface-interface-skeleton__content
+  > .components-notice-list {
+  min-height: 0;
+  flex: 0 0 auto;
 }
 
 .page-note-editor__isolated
@@ -124,7 +138,7 @@
 }
 
 .page-note-editor__isolated .editor-styles-wrapper {
-  min-height: 10rem;
+  min-height: 0;
   color: var(--page-note-editor-text);
   background: var(--page-note-editor-canvas);
 }
@@ -133,6 +147,11 @@
   padding-block: 0 !important;
   padding-top: 0 !important;
   padding-bottom: 0 !important;
+}
+
+.page-note-editor__isolated.iso-editor .block-editor-writing-flow::after {
+  display: none !important;
+  content: none !important;
 }
 
 .page-note-editor__isolated.iso-editor
@@ -151,221 +170,6 @@
   }
 }
 
-.page-note-editor__isolated.iso-editor
-  .block-editor-writing-flow
-  [data-type='core/list']
-  li {
-  margin-inline-start: 0;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container {
-  color: var(--page-note-editor-text);
-  font-size: 1rem;
-  line-height: 1.65;
-  overflow-wrap: anywhere;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  :where(p, h1, h2, h3, h4, h5, h6, ol, ul, li, blockquote, cite, pre, hr) {
-  color: inherit;
-  overflow-wrap: anywhere;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  p {
-  margin: 0;
-  line-height: 1.65;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  :where(h1, h2, h3, h4, h5, h6) {
-  margin: 0;
-  font-weight: 700;
-  line-height: 1.25;
-  text-wrap: balance;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  h1 {
-  font-size: clamp(1.65rem, 9vw, 2.25rem);
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  h2 {
-  font-size: clamp(1.45rem, 8vw, 1.9rem);
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  h3 {
-  font-size: clamp(1.3rem, 7vw, 1.6rem);
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  h4 {
-  font-size: 1.2rem;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  h5 {
-  font-size: 1.08rem;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  h6 {
-  font-size: 1rem;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  :where(ol, ul) {
-  margin: 0;
-  padding-inline-start: 1.5rem;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  li {
-  margin-block: 0.2rem;
-  padding-inline-start: 0.15rem;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  blockquote {
-  margin: 0;
-  padding-inline-start: 1rem;
-  border-inline-start: 3px solid var(--page-note-editor-quote-border);
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  cite {
-  display: block;
-  margin-top: 0.5rem;
-  color: var(--page-note-editor-muted);
-  font-size: 0.875rem;
-  line-height: 1.45;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  pre {
-  max-width: 100%;
-  margin: 0;
-  padding: 0.75rem;
-  border-radius: 0.4rem;
-  background: var(--page-note-editor-code-background);
-  font-family:
-    ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
-  line-height: 1.55;
-  overflow-x: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  :where(code, kbd) {
-  padding: 0.08em 0.3em;
-  border-radius: 0.25rem;
-  background: var(--page-note-editor-code-background);
-  font-family:
-    ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
-  font-size: 0.9em;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  pre
-  code {
-  padding: 0;
-  background: transparent;
-  font-size: inherit;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  hr {
-  width: 100%;
-  margin: 1rem 0;
-  border: 0;
-  border-top: 1px solid var(--page-note-editor-quote-border);
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  a {
-  color: var(--page-note-editor-accent);
-  font-weight: 600;
-  text-decoration: underline;
-  text-decoration-thickness: 0.08em;
-  text-underline-offset: 0.15em;
-  overflow-wrap: anywhere;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  :where(strong, b) {
-  font-weight: 700;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  :where(em, i) {
-  font-style: italic;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  mark {
-  padding-inline: 0.08em;
-  color: inherit;
-  background: var(--page-note-editor-mark-background);
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  :where(s, del) {
-  text-decoration: line-through;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  :where(sub, sup) {
-  position: relative;
-  font-size: 0.75em;
-  line-height: 0;
-  vertical-align: baseline;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  sub {
-  bottom: -0.25em;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  sup {
-  top: -0.5em;
-}
-
-.page-note-editor__isolated.iso-editor
-  .block-editor-block-list__layout.is-root-container
-  br {
-  line-height: inherit;
-}
-
 .page-note-editor__isolated :where(button, [role='button']):focus-visible,
 .page-note-editor__isolated
   :where([contenteditable='true'], input, textarea):focus-visible {
@@ -379,12 +183,7 @@
     --page-note-editor-canvas: #101712;
     --page-note-editor-border: #3a4a3f;
     --page-note-editor-text: #eef5f0;
-    --page-note-editor-muted: #b4c1b8;
-    --page-note-editor-accent: #58b775;
     --page-note-editor-focus: #77b8ff;
-    --page-note-editor-code-background: #243128;
-    --page-note-editor-mark-background: #665b20;
-    --page-note-editor-quote-border: #637568;
     --wp-admin-theme-color: #58b775;
     --wp-admin-theme-color--rgb: 88, 183, 117;
     --wp-admin-theme-color-darker-10: #3f9b61;

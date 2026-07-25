@@ -31,11 +31,17 @@ vi.mock('@automattic/isolated-block-editor', () => ({
 }));
 
 import {
+  adaptStructuredBlocksToRoot,
   PageNoteEditor,
   buildPageNoteEditorCapabilities,
+  isSerializedGutenbergDocument,
   type PageNoteEditorCapabilities,
   type PageNoteEditorProps,
 } from './PageNoteEditor';
+import {
+  PAGE_NOTE_EDITOR_STYLES,
+  PAGE_NOTE_EDITOR_WRITING_CSS,
+} from './PageNoteEditorStyles';
 
 interface CapturedEditorProps {
   readonly className: string;
@@ -238,7 +244,7 @@ describe('buildPageNoteEditorCapabilities', () => {
         maxUploadFileSize: 0,
         reusableBlocks: [],
         richEditingEnabled: true,
-        styles: [],
+        styles: PAGE_NOTE_EDITOR_STYLES,
         template: null,
         templateLock: null,
       },
@@ -248,6 +254,61 @@ describe('buildPageNoteEditorCapabilities', () => {
       [],
     );
     expect(capabilities.editor.allowedBlockTypes).not.toContain('core/embed');
+  });
+
+  it('supplies a complete non-empty Gutenberg editor stylesheet asset', () => {
+    const capabilities = buildPageNoteEditorCapabilities('text-focused-blocks');
+
+    expect(capabilities.editor.styles).toBe(PAGE_NOTE_EDITOR_STYLES);
+    expect(capabilities.editor.styles).toEqual([
+      {
+        baseURL: '',
+        __unstableType: 'theme',
+        css: PAGE_NOTE_EDITOR_WRITING_CSS,
+      },
+    ]);
+    expect(PAGE_NOTE_EDITOR_WRITING_CSS.length).toBeGreaterThan(4_000);
+
+    for (const selector of [
+      'p',
+      'h1',
+      'h2',
+      'h3',
+      'h4',
+      'h5',
+      'h6',
+      'ol',
+      'ul',
+      'li',
+      'blockquote',
+      'cite',
+      'pre',
+      'code',
+      'kbd',
+      'hr',
+      'a',
+      'strong',
+      'b',
+      'em',
+      'i',
+      'mark',
+      's',
+      'del',
+      'sub',
+      'sup',
+      'br',
+    ]) {
+      expect(PAGE_NOTE_EDITOR_WRITING_CSS).toMatch(
+        new RegExp(`\\.editor-styles-wrapper ${selector}(?:[\\s,{]|$)`, 'u'),
+      );
+    }
+
+    expect(PAGE_NOTE_EDITOR_WRITING_CSS).toContain(
+      '@media (prefers-color-scheme: dark)',
+    );
+    expect(PAGE_NOTE_EDITOR_WRITING_CSS).toContain(
+      '.block-editor-block-list__layout.is-root-container > .wp-block',
+    );
   });
 
   it('returns deterministic deeply immutable capabilities', () => {
@@ -273,6 +334,59 @@ describe('buildPageNoteEditorCapabilities', () => {
 });
 
 describe('PageNoteEditor loading contract', () => {
+  it('adapts incompatible structured blocks to a nested list root without dropping text', () => {
+    const paragraph = createBlock('core/paragraph', {
+      content: 'Nested transformed text',
+    });
+    const adapted = adaptStructuredBlocksToRoot([paragraph], 'list-root', {
+      canInsertBlockType: (blockName, rootClientId) =>
+        rootClientId === 'list-root' && blockName === 'core/list-item',
+      getBlockName: (clientId) =>
+        clientId === 'list-root' ? 'core/list' : undefined,
+    });
+
+    expect(adapted).not.toBeNull();
+    expect(adapted?.map((block) => block.name)).toEqual(['core/list-item']);
+    expect(serialize(adapted ?? [])).toContain('Nested transformed text');
+  });
+
+  it('fails root adaptation without mutating or dropping incompatible content', () => {
+    const paragraph = createBlock('core/paragraph', {
+      content: 'Must remain available to native paste',
+    });
+    const getBlockName = vi.fn(() => undefined);
+
+    expect(
+      adaptStructuredBlocksToRoot([paragraph], 'unknown-root', {
+        canInsertBlockType: () => false,
+        getBlockName,
+      }),
+    ).toBeNull();
+    expect(getBlockName).toHaveBeenCalledWith('unknown-root');
+    expect(serialize([paragraph])).toContain(
+      'Must remain available to native paste',
+    );
+  });
+
+  it('uses the direct serialization parser to distinguish block documents from raw HTML', () => {
+    expect(
+      isSerializedGutenbergDocument(
+        '<!-- wp:paragraph --><p>Hello</p><!-- /wp:paragraph -->',
+      ),
+    ).toBe(true);
+    expect(
+      isSerializedGutenbergDocument(
+        '<!-- wp:quote --><blockquote><!-- wp:paragraph --><p>Nested</p><!-- /wp:paragraph --></blockquote><!-- /wp:quote -->',
+      ),
+    ).toBe(true);
+    expect(isSerializedGutenbergDocument('<h2>Raw heading</h2>')).toBe(false);
+    expect(
+      isSerializedGutenbergDocument(
+        '<p>A comment-like string: &lt;!-- wp:paragraph --&gt;</p>',
+      ),
+    ).toBe(false);
+  });
+
   it('remounts its runtime and re-sanitizes initial content when editor mode changes', () => {
     const props = createProps({
       initialContentHtml:
@@ -1366,7 +1480,7 @@ describe('PageNoteEditor local theme contract', () => {
     expect(css).toContain('@media (prefers-color-scheme: dark)');
     expect(css).toContain(':focus-visible');
     expect(css).toContain('@media (prefers-reduced-motion: reduce)');
-    expect(css).toContain('min-height: 10rem');
+    expect(css).toContain('min-height: 0');
     expect(css).toContain('height: auto !important');
     expect(css).toContain('max-height: none !important');
     expect(css).toContain('overflow: visible !important');
@@ -1384,51 +1498,17 @@ describe('PageNoteEditor local theme contract', () => {
       /\.page-note-editor__isolated\.iso-editor \.block-editor-writing-flow \{ padding-block: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; \}/u,
     );
 
-    for (const element of [
-      'p',
-      'h1',
-      'h2',
-      'h3',
-      'h4',
-      'h5',
-      'h6',
-      'ol',
-      'ul',
-      'li',
-      'blockquote',
-      'cite',
-      'pre',
-      'code',
-      'kbd',
-      'hr',
-      'a',
-      'strong',
-      'b',
-      'em',
-      'i',
-      'mark',
-      's',
-      'del',
-      'sub',
-      'sup',
-      'br',
-    ]) {
-      expect(compactCss).toMatch(
-        new RegExp(`(?:\\b|\\(|, )${element}(?:\\b|\\))`, 'u'),
-      );
-    }
-
     expect(compactBaseCss).toMatch(
-      /\.side-panel-shell \{ display: flex; flex-direction: column;/u,
+      /\.side-panel-shell \{ min-height: 100vh; display: flex; flex-direction: column;/u,
     );
     expect(compactBaseCss).toMatch(
-      /\.session-area \{ min-height: 0; display: flex; flex: 1 0 auto; flex-direction: column;/u,
+      /\.session-area \{ min-height: 0; display: flex; flex: 1 1 auto; flex-direction: column;/u,
     );
     expect(compactBaseCss).toMatch(
-      /\.page-document-shell \{ min-width: 0; min-height: 0; display: flex; flex: 1 0 auto; flex-direction: column;/u,
+      /\.page-document-shell \{ min-width: 0; min-height: 0; display: flex; flex: 1 1 auto; flex-direction: column;/u,
     );
     expect(compactBaseCss).toMatch(
-      /\.note-editor-area \{ min-height: 0; display: flex; flex: 1 0 auto; flex-direction: column;/u,
+      /\.note-editor-area \{ min-height: 0; display: flex; flex: 1 1 auto; flex-direction: column;/u,
     );
     expect(compactBaseCss).toContain(
       '.note-editor-area > :where(.note-status, .sync-visibility-message) { flex: 0 0 auto;',

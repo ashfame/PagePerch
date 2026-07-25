@@ -156,11 +156,33 @@
 
 ## PP-013 — Refine the Editor Canvas and Rich Paste
 
-- Status: completed
+- Status: acceptance rejected after manual verification
 - Priority: P0
 - Dependencies: PP-012
 - Spec or plan references: User-requested `v0.1.2` refinement; Plan: Side Panel; WordPress block serialization default parser and Gutenberg raw/paste handling
 - Acceptance criteria: Gutenberg root block padding is exactly 16 pixels at narrow and wide panel widths; writing-flow block padding is zero; supported headings, paragraphs, lists, quotes, code/preformatted text, separators, links, and safe inline formatting have coherent light/dark editor styles; pasted semantic HTML is converted by Gutenberg into allowed blocks while preserving safe structure and inline formatting; a short editor fills the available panel height without hiding the note-status paragraph; long content still grows the document with no inner vertical scroller; package, lockfile, manifest, artifact, and annotated `v0.1.2` minor-update tag agree.
 - Suggested files: `src/side-panel/PageNoteEditor.tsx`, `src/side-panel/PageNoteEditor.css`, `src/styles/base.css`, focused component/browser tests, version metadata
 - Test expectations: Focused paste/parser, style-contract, short-height/status, long-growth/no-inner-scroller, complete `npm run check`, deterministic `npm run release:package`, strict archive verification, and green branch/tag CI
-- Notes: Independently approved after an adversarial corrective review. The editor now has exact 16-pixel narrow/wide root gutters, zero writing-flow padding, coherent theme-aware styles for supported semantic text, and a flex-height chain that fills a short viewport while preserving the passive status and still grows with long content. The pinned `@wordpress/blocks` stack uses `@wordpress/block-serialization-default-parser` for serialized Gutenberg documents and its paste/raw handlers for incoming HTML; PagePerch preserves safe headings, lists, quotes, code, emphasis, and HTTPS links but rebuilds every persistence projection through the existing safe schema so arbitrary CSS, event handlers, scripts, embedded content, unsafe URL schemes, and unsupported blocks are never stored or synced. The complete 959-test gate passes at 92.13% statement and 88.80% branch coverage with four packaged Chromium passes and one intentional native-toolbar skip. Two packaging runs produced the same 5,040,549-byte archive with SHA-256 `f0ea98eedcb16ef94bf516428aadcf145ff8ded3eae6d471ac77c6689b5e1e50`; strict checksum, ZIP integrity, embedded manifest version, and exact two-file `0.1.2` cardinality checks pass. Trusted rich clipboard input, the native toolbar host, and approved live BYOS remain explicit manual verification boundaries.
+- Notes: The `v0.1.2` artifact and automated gates completed, but the user rejected manual acceptance. The capability object empties both Gutenberg editor style collections, the parser is only transitive and is not imported directly, the paste tests invoke the utility and inject its result instead of exercising browser paste, and the packaged height assertion accepts a 10rem editor with only 24 pixels below the final block. PP-014 replaces these false-positive contracts.
+
+## PP-014 — Correct Gutenberg Styles, Rich Paste, and Viewport Fill
+
+- Status: completed
+- Priority: P0
+- Dependencies: PP-013 rejection
+- Spec or plan references: User manual feedback after `v0.1.2`; Plan: Side Panel; WordPress block serialization default parser, block editor styles, and block paste-handler documentation
+- Acceptance criteria: `@wordpress/block-serialization-default-parser` is an exact direct dependency and is meaningfully imported for serialized Gutenberg document detection or parsing; the editor receives a non-empty Gutenberg `styles` collection containing coherent light/dark content styles for every supported rendered text element and block; a trusted Chromium copy/paste carrying `text/html` creates the expected heading, paragraphs, list, quote, code, emphasis, and safe link blocks and persists them through panel reload; unsafe active content and URL schemes remain excluded from persistence; at a 720-pixel viewport a short editor occupies all space between the header and passive status with only the intended gaps, while long notes still grow without an inner scroller.
+- Suggested files: `package.json`, `package-lock.json`, `src/side-panel/PageNoteEditor.tsx`, a dedicated editor-style module or stylesheet, `src/side-panel/PageNoteEditor.css`, `src/styles/base.css`, focused component tests, and `e2e/extension.smoke.spec.ts`
+- Test expectations: Direct dependency/import test, capability style-content assertions, genuine trusted Chromium rich-copy/paste and reload assertions, strict bounding-box viewport-fill assertion, long-growth regression, complete `npm run check`, deterministic release packaging, and green branch/tag CI
+- Notes: Independently approved after one adversarial corrective review. Exact direct dependencies now expose the pinned block editor and serialized-document parser; the parser detects actual comment-delimited Gutenberg documents while `pasteHandler` converts ordinary clipboard HTML. The isolated editor receives a complete theme style asset despite its hard-coded empty visual-editor styles. The structured-paste bridge preserves block order, partial-selection semantics, nested-list validity, native undo/redo, safe persistence, and reload without swallowing unsupported paste paths. Genuine Chromium copy/paste reports trusted events and `text/html`; strict 280×720 geometry proves the short editor fills the panel while long content remains document-growing. The complete gate passes with 963 tests at 91.38% statement and 87.76% branch coverage, production build/audits, six passing Chromium flows, and one intentional native-toolbar skip.
+
+## PP-015 — Cut the 0.1.3 Corrective Minor Update
+
+- Status: in progress
+- Priority: P0
+- Dependencies: PP-014
+- Spec or plan references: User-requested `v0.1.2` correction and standing minor-update tag convention
+- Acceptance criteria: Package, lockfile, and Chrome manifest versions agree at `0.1.3`; README release commands name the exact artifact; the complete release gate passes; one deterministic `pageperch-0.1.3.zip` plus matching strict checksum is produced; the source commit is annotated with `v0.1.3` using the standing minor-update message and both commit and tag are pushed without modifying `v0.1.2`.
+- Suggested files: version metadata, README, release evidence, orchestration state
+- Test expectations: Complete `npm run check`, repeated deterministic `npm run release:package`, exact archive/checksum cardinality and names, strict checksum verification, ZIP integrity, embedded manifest/package version inspection, clean source/tag verification, and green branch/tag CI
+- Notes: Main orchestrator owns version binding, release evidence, commit, tag, push, and final manual-test handoff.

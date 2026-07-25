@@ -193,7 +193,7 @@ npm run test:e2e
 npm run release:package
 ```
 
-Set `PAGEPERCH_HEADFUL=1` when running `npm run test:e2e` to display Chromium. The Playwright suite exercises the packaged worker and options page, exact narrow and wide editor gutters, short-note viewport fill with visible status, a keyboard-only blank Gutenberg edit with undo/redo, content-driven growth, exact local persistence across panel reload and browser restart, and the default-off then opted-in root recent-note index. The native toolbar-to-side-panel host click remains an explicit manual check because Playwright cannot operate Chrome's browser toolbar.
+Set `PAGEPERCH_HEADFUL=1` when running `npm run test:e2e` to display Chromium. The Playwright suite exercises the packaged worker and options page, exact narrow and wide editor gutters, computed light/dark writing styles, strict short-note viewport fill with visible status, a keyboard-only blank Gutenberg edit with undo/redo, content-driven growth, genuine trusted HTML copy/paste with partial-selection and nested-list coverage, safe persistence across panel reload and browser restart, and the default-off then opted-in root recent-note index. The native toolbar-to-side-panel host click remains an explicit manual check because Playwright cannot operate Chrome's browser toolbar.
 
 Automated tests never use live BYOS credentials. OAuth, temporary credentials, SigV4/path-style S3 transport, reconciliation, failures, expiry, and retries use controlled mocks; live consent and remote storage remain manual acceptance checks.
 
