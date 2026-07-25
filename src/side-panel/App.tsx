@@ -1,12 +1,24 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ComponentType } from 'react';
 
 import '../styles/base.css';
+import type { PageNoteEditorProps } from './PageNoteEditor';
 import type {
   ActivePageSessionController,
   ActivePageSessionState,
   SupportedActivePageSessionState,
   UnsupportedActivePageSessionState,
 } from './activePageSession';
+import type {
+  PageNoteOwnership,
+  PageNoteOwnershipConnection,
+  PageNoteOwnershipView,
+} from './pageNoteOwnership';
+
+export type {
+  CreatePageNoteDraftRuntime,
+  PageNoteDraftRuntime,
+  RegisterPendingPageSave,
+} from './pageNoteOwnership';
 
 type SessionController = Pick<ActivePageSessionController, 'start' | 'stop'>;
 
@@ -16,6 +28,8 @@ export type CreateActivePageSessionController = (
 
 export interface SidePanelAppProps {
   readonly createController: CreateActivePageSessionController;
+  readonly draftOwnership: PageNoteOwnership;
+  readonly Editor: ComponentType<PageNoteEditorProps>;
   readonly openSettings: () => void | Promise<void>;
 }
 
@@ -186,12 +200,95 @@ function canonicalContext(canonicalUrl: string): string {
   }
 }
 
+interface PageNoteDraftView {
+  readonly view?: PageNoteOwnershipView;
+  readonly retryOwnership: () => void;
+}
+
+const NOTE_RUNTIME_ERROR =
+  'PagePerch could not prepare this local note. Retry.';
+function usePageNoteDraft(
+  session: SupportedActivePageSessionState | undefined,
+  ownership: PageNoteOwnership,
+): PageNoteDraftView {
+  const [view, setView] = useState<PageNoteOwnershipView>();
+  const connectionRef = useRef<PageNoteOwnershipConnection>();
+
+  useEffect(() => {
+    const connection = ownership.connect(setView);
+    connectionRef.current = connection;
+
+    return () => {
+      if (connectionRef.current === connection) {
+        connectionRef.current = undefined;
+      }
+
+      connection.disconnect();
+    };
+  }, [ownership]);
+
+  useEffect(() => {
+    connectionRef.current?.setSession(session);
+  }, [ownership, session]);
+
+  const retryOwnership = () => {
+    connectionRef.current?.retry();
+  };
+
+  return {
+    view,
+    retryOwnership,
+  };
+}
+
 function SupportedPageShell({
   session,
+  draft,
+  retryOwnership,
+  Editor,
 }: {
   readonly session: SupportedActivePageSessionState;
+  readonly draft?: PageNoteOwnershipView;
+  readonly retryOwnership: () => void;
+  readonly Editor: ComponentType<PageNoteEditorProps>;
 }) {
   const pageTitle = session.title.trim();
+  const [editorPhase, setEditorPhase] = useState<'loading' | 'ready' | 'error'>(
+    'loading',
+  );
+  const [actionError, setActionError] = useState<string>();
+  const actionLifecycleRef = useRef({ mounted: true, attempt: 0 });
+  const activeDraft =
+    draft?.pageKey === session.identity.pageKey ? draft : undefined;
+  useEffect(() => {
+    const actionLifecycle = actionLifecycleRef.current;
+    actionLifecycle.mounted = true;
+
+    return () => {
+      actionLifecycle.mounted = false;
+      actionLifecycle.attempt += 1;
+    };
+  }, []);
+  const runAsyncAction = (
+    action: () => void | Promise<void>,
+    failureMessage: string,
+  ) => {
+    const actionLifecycle = actionLifecycleRef.current;
+    const attempt = actionLifecycle.attempt + 1;
+    actionLifecycle.attempt = attempt;
+    setActionError(undefined);
+    const fail = () => {
+      if (actionLifecycle.mounted && actionLifecycle.attempt === attempt) {
+        setActionError(failureMessage);
+      }
+    };
+
+    try {
+      void Promise.resolve(action()).catch(fail);
+    } catch {
+      fail();
+    }
+  };
 
   return (
     <section
@@ -209,12 +306,113 @@ function SupportedPageShell({
           {canonicalContext(session.identity.canonicalUrl)}
         </code>
       </p>
-      <p>
-        This page is identified and ready. The note editor is not connected yet.
-      </p>
-      <p className="status" role="status">
-        Page identified
-      </p>
+      {activeDraft === undefined ? (
+        <p className="status note-status" role="status" aria-live="polite">
+          Loading cached note
+        </p>
+      ) : activeDraft.status === 'runtime-error' ? (
+        <div className="note-action-panel">
+          <p className="session-alert" role="alert">
+            {activeDraft.message}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              try {
+                retryOwnership();
+              } catch {
+                setActionError(NOTE_RUNTIME_ERROR);
+              }
+            }}
+          >
+            Retry local note
+          </button>
+        </div>
+      ) : activeDraft.state.status === 'loading' ? (
+        <p className="status note-status" role="status" aria-live="polite">
+          Loading cached note
+        </p>
+      ) : activeDraft.state.status === 'load-error' ? (
+        <div className="note-action-panel">
+          <p className="session-alert" role="alert">
+            {activeDraft.state.error.message}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              runAsyncAction(
+                () => activeDraft.runtime.retry(),
+                NOTE_RUNTIME_ERROR,
+              );
+            }}
+          >
+            Retry loading note
+          </button>
+        </div>
+      ) : (
+        <div className="note-editor-area">
+          {editorPhase === 'error' ? (
+            <p className="session-alert editor-alert" role="alert">
+              PagePerch could not open the local note editor. Reload the panel
+              to retry.
+            </p>
+          ) : null}
+          <Editor
+            key={session.identity.pageKey}
+            initialContentHtml={activeDraft.state.initialContentHtml}
+            editorMode={activeDraft.state.editorMode}
+            onContentChange={(contentHtml) => {
+              setActionError(undefined);
+
+              try {
+                activeDraft.runtime.contentChanged(contentHtml);
+              } catch {
+                setActionError(NOTE_RUNTIME_ERROR);
+              }
+            }}
+            onLoading={() => {
+              setEditorPhase('loading');
+            }}
+            onReady={() => {
+              setEditorPhase('ready');
+            }}
+            onError={() => {
+              setEditorPhase('error');
+            }}
+          />
+          {activeDraft.state.save.phase === 'saving' ? (
+            <p className="status note-status" role="status" aria-live="polite">
+              Saving
+            </p>
+          ) : activeDraft.state.save.phase === 'saved-locally' ? (
+            <p className="status note-status" role="status" aria-live="polite">
+              Saved locally
+            </p>
+          ) : activeDraft.state.save.phase === 'save-error' ? (
+            <div className="note-action-panel">
+              <p className="session-alert" role="alert">
+                {activeDraft.state.save.error.message}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  runAsyncAction(
+                    () => activeDraft.runtime.retry(),
+                    NOTE_RUNTIME_ERROR,
+                  );
+                }}
+              >
+                Retry saving note
+              </button>
+            </div>
+          ) : null}
+        </div>
+      )}
+      {actionError === undefined ? null : (
+        <p className="session-alert note-action-error" role="alert">
+          {actionError}
+        </p>
+      )}
     </section>
   );
 }
@@ -265,7 +463,15 @@ function TransientSessionState({
   );
 }
 
-function SessionArea({ view }: { readonly view: SessionView }) {
+function SessionArea({
+  view,
+  draftOwnership,
+  Editor,
+}: {
+  readonly view: SessionView;
+  readonly draftOwnership: PageNoteOwnership;
+  readonly Editor: ComponentType<PageNoteEditorProps>;
+}) {
   const flushError =
     view.current.status === 'error' &&
     view.current.reason === 'pending-save-flush-failed' &&
@@ -280,6 +486,7 @@ function SessionArea({ view }: { readonly view: SessionView }) {
         : view.lastSupported;
   const transient =
     view.current.status === 'supported' ? undefined : view.current;
+  const draft = usePageNoteDraft(supported, draftOwnership);
 
   return (
     <div className="session-area">
@@ -292,6 +499,9 @@ function SessionArea({ view }: { readonly view: SessionView }) {
         <SupportedPageShell
           key={supported.identity.pageKey}
           session={supported}
+          draft={draft.view}
+          retryOwnership={draft.retryOwnership}
+          Editor={Editor}
         />
       ) : transient === undefined ? null : (
         <TransientSessionState state={transient} />
@@ -302,6 +512,8 @@ function SessionArea({ view }: { readonly view: SessionView }) {
 
 export function SidePanelApp({
   createController,
+  draftOwnership,
+  Editor,
   openSettings,
 }: SidePanelAppProps) {
   const view = useActivePageSession(createController);
@@ -354,7 +566,11 @@ export function SidePanelApp({
         </div>
       </header>
 
-      <SessionArea view={view} />
+      <SessionArea
+        view={view}
+        draftOwnership={draftOwnership}
+        Editor={Editor}
+      />
 
       <section
         className="surface preferences-surface"
@@ -362,8 +578,8 @@ export function SidePanelApp({
       >
         <h2 id="settings-heading">Preferences</h2>
         <p>
-          The settings page currently provides an overview of planned editor,
-          page identity, and storage controls.
+          Review editor safeguards, page identity behavior, and local storage
+          boundaries.
         </p>
         {settingsError === undefined ? null : (
           <p className="session-alert preferences-alert" role="alert">

@@ -7,7 +7,7 @@
 - React component tests use React Testing Library with explicit fake timers and `matchMedia`, Chrome API, and service mocks to verify user-visible state, keyboard behavior, focus, automatic theme changes, navigation, and BYOS controls.
 - Transport tests mock `fetch` and AWS SDK request handling while asserting exact OAuth form fields, scope, path-style S3 configuration, deterministic keys, credential lifetime, and partial failure behavior without making production requests.
 - Production-package tests parse the manifest and emitted HTML/JavaScript/CSS to reject undeclared resources, external executable URLs, unsafe evaluation, source maps, accidental credentials, unstable filenames, and missing files.
-- Playwright launches the unpacked production extension under Chromium/Xvfb and verifies options, service-worker startup, panel action where supported, navigation, local persistence across browser restart, and exact-origin root indexing.
+- Playwright launches the unpacked production extension under Chromium/Xvfb. Current coverage verifies options, service-worker startup, the unsupported panel state, and a real editable Gutenberg surface for a routed supported HTTPS tab at 280 pixels without fatal or duplicate-store errors; later slices add navigation, restart persistence, and exact-origin root indexing.
 
 ## Required Gates
 

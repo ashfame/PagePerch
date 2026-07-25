@@ -150,6 +150,87 @@ test('loads the unpacked module worker and both branded React surfaces', async (
   }
 });
 
+test('opens the packaged editor for a supported HTTP tab without fatal runtime errors', async () => {
+  const session = await launchExtension();
+  const fixtureUrl = 'https://pageperch.test/editor-fixture';
+  const pageErrors: string[] = [];
+  const consoleErrors: string[] = [];
+
+  try {
+    await session.page.route(fixtureUrl, async (route) => {
+      await route.fulfill({
+        body: '<!doctype html><html><head><title>PagePerch editor fixture</title></head><body><main>Fixture page</main></body></html>',
+        contentType: 'text/html',
+        status: 200,
+      });
+    });
+    await session.page.goto(fixtureUrl);
+    const fixtureTabId = await session.serviceWorker.evaluate(async (url) => {
+      const tab = (await chrome.tabs.query({})).find(
+        (candidate) => candidate.url === url,
+      );
+
+      return tab?.id;
+    }, fixtureUrl);
+
+    expect(fixtureTabId).toBeDefined();
+    const panelPage = await session.context.newPage();
+    await panelPage.setViewportSize({ width: 280, height: 720 });
+    panelPage.on('pageerror', (error) => {
+      pageErrors.push(error.message);
+    });
+    panelPage.on('console', (message) => {
+      const text = message.text();
+
+      if (
+        message.type() === 'error' ||
+        /core\/patterns|already registered|invalid store/i.test(text)
+      ) {
+        consoleErrors.push(`${message.type()}: ${text}`);
+      }
+    });
+    await panelPage.goto(
+      `chrome-extension://${session.extensionId}/side-panel.html`,
+    );
+    await session.serviceWorker.evaluate(async (tabId) => {
+      if (tabId === undefined) {
+        throw new Error('The supported fixture tab is missing.');
+      }
+
+      await chrome.tabs.update(tabId, { active: true });
+    }, fixtureTabId);
+
+    await expect(
+      panelPage.getByRole('heading', {
+        level: 2,
+        name: 'Notes for PagePerch editor fixture',
+      }),
+    ).toBeVisible();
+    await expect(panelPage.getByText('Loading cached note')).toBeHidden();
+    await panelPage
+      .getByRole('button', {
+        name: 'Add default block',
+      })
+      .evaluate((button: HTMLButtonElement) => {
+        button.click();
+      });
+    await expect(
+      panelPage.locator('[contenteditable="true"]').first(),
+    ).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(
+      panelPage.getByText('This note could not be opened safely'),
+    ).toHaveCount(0);
+
+    await expect
+      .poll(() => ({ consoleErrors, pageErrors }))
+      .toEqual({ consoleErrors: [], pageErrors: [] });
+  } finally {
+    await closeExtension(session);
+  }
+});
+
 test('documents the unavailable toolbar-to-side-panel automation boundary', () => {
   test.skip(
     true,

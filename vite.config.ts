@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
+import { GUTENBERG_SINGLETON_PACKAGES } from './src/build/gutenbergCompatibility';
 import { mv3CompatibilityPlugin } from './src/build/mv3Compatibility';
 
 const projectRoot = import.meta.dirname;
@@ -12,7 +13,7 @@ export default defineConfig({
   publicDir: resolve(projectRoot, 'public'),
   plugins: [mv3CompatibilityPlugin(), react()],
   resolve: {
-    dedupe: ['@wordpress/block-editor'],
+    dedupe: [...GUTENBERG_SINGLETON_PACKAGES],
   },
   build: {
     assetsInlineLimit: 0,

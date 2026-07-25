@@ -42,15 +42,15 @@
 
 ## 2026-07-25 — Preserve the Pinned Editor with Audited MV3 Compatibility
 
-- Decision: Keep `@automattic/isolated-block-editor@2.30.0`, override `@wordpress/core-data@7.24.0` to its matching `@wordpress/sync@1.24.0`, and apply a Vite transform only to Lodash’s exact `Function('return this')()` global fallback, replacing it with Chrome 114’s `globalThis`.
-- Context: A genuine production probe exposed an incompatible caret-resolved WordPress sync generation and MV3-forbidden dynamic-function fallbacks. Media-worker code from newer mismatched WordPress generations also violated the extension CSP.
+- Decision: Keep `@automattic/isolated-block-editor@2.30.0`; pin and deduplicate its compatible WordPress 24-series commands, data, dataviews, patterns, and preferences packages; override `@wordpress/core-data@7.24.0` to its matching `@wordpress/sync@1.24.0`; and apply a Vite transform only to Lodash’s exact `Function('return this')()` global fallback, replacing it with Chrome 114’s `globalThis`.
+- Context: Genuine production probes exposed incompatible caret-resolved WordPress sync and data-registry generations, duplicate store registration, and MV3-forbidden dynamic-function fallbacks. Media-worker code from newer mismatched WordPress generations also violated the extension CSP.
 - Options considered: Skip editor bundling until later; downgrade the mandated editor; allow unsafe evaluation; align the pinned dependency generation and narrowly transform the equivalent global-object fallback.
-- Consequences: Both the standalone editor probe and future production application use the same compatibility transform and strict package audit. Dependency refreshes fail the normal gate if forbidden constructs or incompatible exports return.
-- Follow-up tasks: Exercise the actual restricted editor in PP-004, retain the real bundle smoke, and reassess the transform and override whenever the editor pin changes.
+- Consequences: The standalone editor probe and production application share one typechecked singleton list, the same compatibility transform, and the strict package audit. The packaged supported-page smoke must reach a real editable surface without fatal or duplicate-store errors. Dependency refreshes fail the normal gate if forbidden constructs, split registries, or incompatible exports return.
+- Follow-up tasks: Retain the real bundle and browser smokes and reassess every pin, deduplication entry, transform, and override whenever the editor version changes.
 
 ## 2026-07-25 — Accept Documented Pinned-Editor Dependency Risk for Private Development
 
-- Decision: Continue private implementation with the locked editor graph while treating 58 moderate production advisories, the stale React peer range, and the unresolved GPL compatibility decision as release risks; do not apply npm’s incompatible forced downgrade.
+- Decision: Continue private implementation with the locked editor graph while treating 60 moderate production advisories, the stale React peer range, and the unresolved GPL compatibility decision as release risks; do not apply npm’s incompatible forced downgrade.
 - Context: The advisories propagate from three underlying Babel runtime RegExp-complexity, Showdown link-parsing ReDoS, and UUID buffer-handling issues. No non-breaking root remediation is available for the mandated editor version, and the audited bundle contains no remote code or forbidden evaluation.
 - Options considered: Abandon the required editor; force npm’s proposed downgrade; ignore the findings; lock, audit, document, and reassess before distribution.
 - Consequences: Local/private product work can continue with deterministic artifacts, but release readiness cannot claim a clean dependency audit and public distribution remains blocked.
@@ -71,3 +71,11 @@
 - Options considered: Filter invalid values; delete/rebuild them automatically; fall back to a full scan; preserve bytes and require explicit recovery.
 - Consequences: UI and migration callers can distinguish empty state from recoverable storage trouble. Physical delete retry repairs only fully valid dangling memberships and leaves unknown data untouched.
 - Follow-up tasks: Map repository recovery errors to actionable UI in PP-004 and document recovery/export guidance in PP-009.
+
+## 2026-07-25 — Keep Draft Ownership Outside the React Tree
+
+- Decision: Create one explicit side-panel-lifetime draft ownership coordinator in the production entry and inject it into React; require stop before unregister before replacement, interrupt stale startup on a newer request, and retain failed cleanup plus its flush handler until an explicit retry succeeds.
+- Context: React StrictMode probes, same-realm remounts, navigation during cached-note startup, and rejected teardown can outlive a component instance. Hook-local ownership could deadlock a newer page or orphan the only pending-save handler.
+- Options considered: Keep ownership entirely in a component hook; use implicit module globals; allow replacement before cleanup; inject one explicit app-lifetime coordinator.
+- Consequences: React connections only publish desired sessions and views. Runtime failures remain retryable on the same page but follow navigation or disconnect automatically, while stop/unregister failures block transfer without losing flushability. Late startup outcomes are observed and cannot resurrect stale ownership.
+- Follow-up tasks: Keep adversarial deferred-start, failure-transition, StrictMode, and cross-remount tests whenever draft or navigation lifetimes change.

@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 
 import { build } from 'vite';
 
+import { GUTENBERG_SINGLETON_PACKAGES } from '../src/build/gutenbergCompatibility.ts';
 import { mv3CompatibilityPlugin } from '../src/build/mv3Compatibility.ts';
 import { auditBundle } from '../src/build/packageAudit.ts';
 
@@ -103,7 +104,7 @@ try {
       plugins: [mv3CompatibilityPlugin()],
       publicDir: false,
       resolve: {
-        dedupe: ['@wordpress/block-editor'],
+        dedupe: [...GUTENBERG_SINGLETON_PACKAGES],
       },
       root: projectRoot,
     }),

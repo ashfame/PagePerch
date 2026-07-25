@@ -217,6 +217,33 @@ button:active {
   line-height: 1.5;
 }
 
+.note-editor-area {
+  display: grid;
+  gap: 0.875rem;
+  min-width: 0;
+}
+
+.note-action-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.note-action-panel .session-alert {
+  flex: 1 1 16rem;
+  margin: 0;
+}
+
+.note-status {
+  margin-top: 0;
+}
+
+.editor-alert,
+.note-action-error {
+  margin-top: 0.875rem !important;
+}
+
 .settings-grid {
   display: grid;
   gap: 1rem;
@@ -273,7 +300,12 @@ button:active {
     height: 2.5rem;
   }
 
-  button {
+  .preferences-surface > button,
+  .note-action-panel > button {
     width: 100%;
+  }
+
+  .note-action-panel {
+    align-items: stretch;
   }
 }

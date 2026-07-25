@@ -4,7 +4,7 @@
 
 PagePerch is a static Manifest V3 extension with three entry surfaces: a module service worker, a React side panel, and a React options page. Vite produces deterministic files for all entries, all runtime code and styles stay inside the extension package, and the manifest grants only the permissions and BYOS host access required by the plan.
 
-The side panel observes active-tab and navigation state through extension APIs, derives a canonical page identity, loads cached local data immediately, and delegates edits to application services. The service worker configures toolbar behavior, observes startup and alarms, and owns background synchronization opportunities. The options page edits versioned settings and controls BYOS connection state.
+The side panel observes active-tab and navigation state through extension APIs, derives a canonical page identity, loads cached local data immediately, and delegates edits to application services. One app-lifetime ownership coordinator sits outside the React tree, registers the current draft with the navigation flush boundary, interrupts stale startup, and preserves failed cleanup across StrictMode or same-realm remounts until an explicit retry succeeds. The service worker configures toolbar behavior, observes startup and alarms, and owns background synchronization opportunities. The options page edits versioned settings and controls BYOS connection state.
 
 ## Layer Boundaries
 
