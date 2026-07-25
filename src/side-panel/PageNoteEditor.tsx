@@ -908,11 +908,7 @@ function PageNoteEditorRuntime({
     (serializedContentHtml: unknown) => {
       const mutationVersion = latestMutationVersionRef.current;
 
-      if (
-        loadFailedRef.current ||
-        mutationVersion === 0 ||
-        lastScheduledMutationVersionRef.current >= mutationVersion
-      ) {
+      if (loadFailedRef.current) {
         return;
       }
 
@@ -921,6 +917,13 @@ function PageNoteEditorRuntime({
           new Error('The editor returned content in an unsupported format.'),
         );
 
+        return;
+      }
+
+      if (
+        mutationVersion === 0 ||
+        lastScheduledMutationVersionRef.current >= mutationVersion
+      ) {
         return;
       }
 
@@ -940,9 +943,6 @@ function PageNoteEditorRuntime({
       const blocks = values[0];
 
       if (!Array.isArray(blocks)) {
-        const mutationVersion = mutationVersionRef.current + 1;
-        mutationVersionRef.current = mutationVersion;
-        latestMutationVersionRef.current = mutationVersion;
         reportError(
           new Error('The editor returned an unsupported block mutation.'),
         );
@@ -950,7 +950,10 @@ function PageNoteEditorRuntime({
       }
 
       try {
-        const contentHtml = serialize(blocks);
+        // Keep Gutenberg's live blocks untouched so native selection and
+        // history remain authoritative. Only the persistence projection is
+        // rebuilt through PagePerch's local text schema.
+        const contentHtml = serialize(sanitizeBlocks(blocks, editorMode));
 
         if (contentHtml === lastSerializedMutationRef.current) {
           return;
@@ -968,7 +971,7 @@ function PageNoteEditorRuntime({
         reportError(error);
       }
     },
-    [forwardMutation, reportError],
+    [editorMode, forwardMutation, reportError],
   );
 
   return (

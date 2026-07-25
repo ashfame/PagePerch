@@ -8,6 +8,7 @@ PagePerch is a private, offline-first Chrome side-panel extension for keeping on
 
 - Opens from the Chrome toolbar and follows the active HTTP or HTTPS tab.
 - Gives every canonical page its own autosaving block-editor document.
+- Converts pasted semantic HTML into supported Gutenberg blocks while retaining safe headings, lists, quotes, code, emphasis, and links.
 - Can show an opt-in recent-note index on an exact-origin root page such as `https://example.com/`.
 - Offers text-focused blocks or a paragraphs-only editor mode.
 - Follows the browser or operating-system light/dark preference automatically.
@@ -192,7 +193,7 @@ npm run test:e2e
 npm run release:package
 ```
 
-Set `PAGEPERCH_HEADFUL=1` when running `npm run test:e2e` to display Chromium. The Playwright suite exercises the packaged worker and options page, a keyboard-only blank Gutenberg edit with undo/redo, content-driven growth, exact local persistence across panel reload and browser restart, and the default-off then opted-in root recent-note index. The native toolbar-to-side-panel host click remains an explicit manual check because Playwright cannot operate Chrome's browser toolbar.
+Set `PAGEPERCH_HEADFUL=1` when running `npm run test:e2e` to display Chromium. The Playwright suite exercises the packaged worker and options page, exact narrow and wide editor gutters, short-note viewport fill with visible status, a keyboard-only blank Gutenberg edit with undo/redo, content-driven growth, exact local persistence across panel reload and browser restart, and the default-off then opted-in root recent-note index. The native toolbar-to-side-panel host click remains an explicit manual check because Playwright cannot operate Chrome's browser toolbar.
 
 Automated tests never use live BYOS credentials. OAuth, temporary credentials, SigV4/path-style S3 transport, reconciliation, failures, expiry, and retries use controlled mocks; live consent and remote storage remain manual acceptance checks.
 
@@ -208,6 +209,7 @@ Before a release candidate:
 - Add an exact-origin exclusion that collapses multiple noted URLs and confirm the resulting document stacks each note oldest-to-newest under its `Source: <original URL>` heading.
 - Remove the exclusion and confirm the combined document moves without content loss.
 - Verify both editor modes, keyboard navigation, visible focus, a narrow side panel, reduced motion, and live operating-system light/dark changes.
+- Paste formatted text containing headings, lists, a quote, code, emphasis, and an HTTPS link from another application; confirm the matching Gutenberg blocks and safe formatting survive save, panel reload, and browser restart.
 - Load a build with an approved BYOS client, connect through consent, save a note, and confirm **Waiting to sync** changes to **Synced to BYOS** automatically.
 - Use a second Chrome profile connected to the same BYOS authorization to confirm newer notes and tombstones converge in both directions.
 - Disconnect or expire the OAuth token while offline, edit several pages, restart Chrome, and confirm the pending count and local notes survive; reconnect and confirm the queue drains automatically.
@@ -226,12 +228,12 @@ npm run release:package
 
 `npm run release:package` rebuilds and audits `dist/`, captures one immutable audited snapshot, and creates `.release/pageperch-<version>.zip` plus `.release/pageperch-<version>.zip.sha256`. Archive paths and metadata are deterministic, repeated packaging of identical sources produces identical bytes, and the archive contains the extension files at its root. The command rejects concurrent runs, source/output aliases, symlinks, unsafe paths, source maps, credential-like material, manifest/package version drift, and unaudited mutations. Publication is rollback-safe; if automatic recovery cannot complete, the error reports a retained recovery directory and lock instead of deleting the only prior good artifact.
 
-For version `0.1.1`, verify and inspect the artifact on a system with `sha256sum` and `unzip`:
+For version `0.1.2`, verify and inspect the artifact on a system with `sha256sum` and `unzip`:
 
 ```sh
 cd .release
-sha256sum -c pageperch-0.1.1.zip.sha256
-unzip -t pageperch-0.1.1.zip
+sha256sum -c pageperch-0.1.2.zip.sha256
+unzip -t pageperch-0.1.2.zip
 ```
 
 Inspect the generated `dist/` directory, verify the intended public `VITE_BYOS_CLIENT_ID` configuration, and load that exact build for the manual checklist. To test the ZIP instead, extract it into a stable directory and select that directory with Chrome's **Load unpacked** control. Never package `.env` files, browser profiles, test artifacts, coverage, source maps, private keys, OAuth tokens, or S3 credentials.

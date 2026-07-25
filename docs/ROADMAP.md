@@ -41,3 +41,9 @@ Simplify the side-panel header and writing surface, make the root recent-note in
 Status: completed.
 
 Bind the accepted PP-011 product state to version `0.1.1`, classify its annotated release tag as a minor update under the standing release-label convention, and produce a fully audited deterministic ZIP and checksum for manual installation.
+
+## M7 — 0.1.2 Editor Canvas and Rich Paste
+
+Status: completed.
+
+Reduce the Gutenberg writing gutter, remove vertical writing-flow padding, give every supported text element coherent theme-aware editor styling, preserve safe semantic formatting when clipboard HTML becomes Gutenberg blocks, and let a short note fill the panel while keeping its passive status visible.

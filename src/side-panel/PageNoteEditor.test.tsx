@@ -69,10 +69,15 @@ interface WordPressBlocksTestApi {
   ) => TestBlock;
   readonly serialize: (blocks: readonly TestBlock[]) => string;
   readonly parse: (content: string) => TestBlock[];
+  readonly pasteHandler: (options: {
+    readonly HTML: string;
+    readonly plainText?: string;
+    readonly mode?: 'AUTO' | 'BLOCKS' | 'INLINE';
+  }) => TestBlock[] | string;
   readonly rawHandler: (options: { readonly HTML: string }) => TestBlock[];
 }
 
-const { createBlock, parse, rawHandler, serialize } =
+const { createBlock, parse, pasteHandler, rawHandler, serialize } =
   wordpressBlocks as unknown as WordPressBlocksTestApi;
 
 function testBlock(
@@ -366,6 +371,129 @@ describe('PageNoteEditor loading contract', () => {
     expect(serialize(sanitized)).toContain('<p>Imported legacy note</p>');
     expect(rawHandler).toHaveBeenCalledWith({ HTML: content });
     expect(parse).not.toHaveBeenCalled();
+  });
+
+  it('projects genuine WordPress paste blocks through the safe text schema before persistence', () => {
+    const onContentChange = vi.fn();
+    render(<PageNoteEditor {...createProps({ onContentChange })} />);
+    const editor = capturedEditor();
+    editor.onLoad(vi.fn(), vi.fn());
+    act(() => {
+      capturedLoaded().onLoaded();
+    });
+    const externalHtml = [
+      '<h2 class="source-heading" style="color: red" onclick="alert(1)">Pasted <em>heading</em></h2>',
+      String.raw`<p class="source-copy" style="font-size: 99px">Body with <strong>bold</strong>, <em>emphasis</em>, a <a href="https://safe.example/path" style="color: red" onclick="alert(1)">safe link</a>, a <a href="javascript:alert(1)">script link</a>, a <a href="data:text/html,unsafe">data link</a>, a <a href="/\evil.example/path">backslash link</a>, and a <a href="//evil.example/path">protocol-relative link</a>.</p>`,
+      '<ul class="source-list"><li>First item</li><li>Second <code>item</code></li></ul>',
+      '<blockquote class="source-quote"><p>Quoted <b>text</b></p><cite>Safe citation</cite></blockquote>',
+      '<pre class="source-code" style="position: fixed"><code>const safe = true;</code></pre>',
+      '<script>window.pwned = true</script>',
+      '<style>.source-copy { display: none }</style>',
+      '<iframe src="https://unsafe.example/embed"></iframe>',
+    ].join('');
+
+    const converted = pasteHandler({
+      HTML: externalHtml,
+      plainText:
+        'Pasted heading\nBody with bold, emphasis, and safe link.\nFirst item\nSecond item\nQuoted text\nSafe citation\nconst safe = true;',
+      mode: 'BLOCKS',
+    });
+
+    expect(converted).not.toBeTypeOf('string');
+    const blocks = converted as TestBlock[];
+    expect(blocks.map((block) => block.name)).toEqual([
+      'core/heading',
+      'core/paragraph',
+      'core/list',
+      'core/quote',
+      'core/code',
+      'core/embed',
+    ]);
+    const nativeSerialized = serialize(blocks);
+    expect(nativeSerialized).toMatch(/javascript:|data:text\/html/iu);
+    expect(blocks[2]?.innerBlocks.map((block) => block.name)).toEqual([
+      'core/list-item',
+      'core/list-item',
+    ]);
+
+    act(() => {
+      editor.__experimentalOnChange(blocks, {});
+      editor.onSaveContent(nativeSerialized);
+    });
+
+    expect(onContentChange).toHaveBeenCalledOnce();
+    const persisted = onContentChange.mock.calls[0]?.[0] as string;
+    expect(persisted).toContain('<!-- wp:heading');
+    expect(persisted).toContain('<!-- wp:list');
+    expect(persisted).toContain('<!-- wp:quote');
+    expect(persisted).toContain('<!-- wp:code');
+    expect(persisted).toContain('<em>heading</em>');
+    expect(persisted).toContain('<strong>bold</strong>');
+    expect(persisted).toContain('<em>emphasis</em>');
+    expect(persisted).toContain(
+      '<a href="https://safe.example/path" rel="noopener noreferrer">safe link</a>',
+    );
+    expect(persisted).toContain('script link');
+    expect(persisted).toContain('data link');
+    expect(persisted).toContain('backslash link');
+    expect(persisted).toContain('protocol-relative link');
+    expect(persisted).toContain('Safe citation');
+    expect(persisted).toContain('const safe = true;');
+    expect(persisted).not.toMatch(
+      /core\/embed|class="source-|style=|onclick=|<script|<style|<iframe|javascript:|data:text\/html|evil\.example|unsafe\.example|window\.pwned/iu,
+    );
+  });
+
+  it('sanitizes block-delimited clipboard HTML that bypasses WordPress paste filtering', () => {
+    const onContentChange = vi.fn();
+    render(<PageNoteEditor {...createProps({ onContentChange })} />);
+    const editor = capturedEditor();
+    editor.onLoad(vi.fn(), vi.fn());
+    act(() => {
+      capturedLoaded().onLoaded();
+    });
+    const delimitedHtml = [
+      '<!-- wp:paragraph {"className":"source-copy","style":{"color":{"text":"#ff0000"}}} -->',
+      '<p class="source-copy" style="color: red" onclick="alert(1)">Delimited <strong>format</strong> with <a href="javascript:alert(1)" onclick="alert(1)">unsafe link</a> and <a href="https://safe.example/delimited" style="color: red">safe link</a><script>window.delimited = true</script></p>',
+      '<!-- /wp:paragraph -->',
+      '<!-- wp:html -->',
+      '<iframe src="https://unsafe.example/frame"></iframe><p onclick="alert(1)">Recovered visible text</p>',
+      '<!-- /wp:html -->',
+    ].join('');
+    const converted = pasteHandler({
+      HTML: delimitedHtml,
+      plainText:
+        'Delimited format with unsafe link and safe link\nRecovered visible text',
+      mode: 'BLOCKS',
+    });
+
+    expect(converted).not.toBeTypeOf('string');
+    const blocks = converted as TestBlock[];
+    expect(blocks.map((block) => block.name)).toEqual([
+      'core/paragraph',
+      'core/html',
+    ]);
+    const nativeSerialized = serialize(blocks);
+    expect(nativeSerialized).toMatch(
+      /source-copy|style=|onclick=|javascript:|<script|<iframe/iu,
+    );
+
+    act(() => {
+      editor.__experimentalOnInput(blocks, {});
+      editor.onSaveContent(nativeSerialized);
+    });
+
+    expect(onContentChange).toHaveBeenCalledOnce();
+    const persisted = onContentChange.mock.calls[0]?.[0] as string;
+    expect(persisted).toContain('<strong>format</strong>');
+    expect(persisted).toContain('unsafe link');
+    expect(persisted).toContain('Recovered visible text');
+    expect(persisted).toContain(
+      '<a href="https://safe.example/delimited" rel="noopener noreferrer">safe link</a>',
+    );
+    expect(persisted).not.toMatch(
+      /core\/html|source-copy|style=|onclick=|javascript:|<script|<iframe|unsafe\.example|window\.delimited/iu,
+    );
   });
 
   it('rejects backslash-obfuscated hrefs while preserving safe inline links and visible text', () => {
@@ -867,6 +995,35 @@ describe('PageNoteEditor lifecycle and save contract', () => {
     );
   });
 
+  it('does not let a raw save string bypass a rejected non-block mutation', () => {
+    const onContentChange = vi.fn();
+    const onError = vi.fn();
+    render(
+      <PageNoteEditor
+        {...createProps({
+          onContentChange,
+          onError,
+        })}
+      />,
+    );
+    const editor = capturedEditor();
+    editor.onLoad(vi.fn(), vi.fn());
+
+    act(() => {
+      capturedLoaded().onLoaded();
+      editor.__experimentalOnChange('not a block array');
+      editor.onSaveContent(
+        '<!-- wp:paragraph --><p onclick="alert(1)"><a href="javascript:alert(1)">unsafe raw save</a></p><!-- /wp:paragraph -->',
+      );
+    });
+
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onError).toHaveBeenCalledWith(
+      new Error('The editor returned an unsupported block mutation.'),
+    );
+    expect(onContentChange).not.toHaveBeenCalled();
+  });
+
   it('uses replacement callbacks during child commits while latching mounted initial content', () => {
     const original = createProps();
     const replacement = createProps({
@@ -1185,6 +1342,10 @@ describe('PageNoteEditor local theme contract', () => {
       resolve(import.meta.dirname, 'PageNoteEditor.css'),
       'utf8',
     );
+    const baseCss = await readFile(
+      resolve(import.meta.dirname, '../styles/base.css'),
+      'utf8',
+    );
     const requiredVariables = [
       '--wp-admin-theme-color:',
       '--wp-admin-theme-color--rgb:',
@@ -1214,6 +1375,64 @@ describe('PageNoteEditor local theme contract', () => {
     expect(css).not.toMatch(/url\(\s*['"]?https?:/u);
 
     const compactCss = css.replace(/\s+/gu, ' ');
+    const compactBaseCss = baseCss.replace(/\s+/gu, ' ');
+    expect(compactCss).toMatch(
+      /\.page-note-editor__isolated\.iso-editor \.block-editor-block-list__layout\.is-root-container \{ padding-inline: 16px !important; padding-right: 16px !important; padding-left: 16px !important; \}/u,
+    );
+    expect(compactCss).toContain('@media (min-width: 600px)');
+    expect(compactCss).toMatch(
+      /\.page-note-editor__isolated\.iso-editor \.block-editor-writing-flow \{ padding-block: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; \}/u,
+    );
+
+    for (const element of [
+      'p',
+      'h1',
+      'h2',
+      'h3',
+      'h4',
+      'h5',
+      'h6',
+      'ol',
+      'ul',
+      'li',
+      'blockquote',
+      'cite',
+      'pre',
+      'code',
+      'kbd',
+      'hr',
+      'a',
+      'strong',
+      'b',
+      'em',
+      'i',
+      'mark',
+      's',
+      'del',
+      'sub',
+      'sup',
+      'br',
+    ]) {
+      expect(compactCss).toMatch(
+        new RegExp(`(?:\\b|\\(|, )${element}(?:\\b|\\))`, 'u'),
+      );
+    }
+
+    expect(compactBaseCss).toMatch(
+      /\.side-panel-shell \{ display: flex; flex-direction: column;/u,
+    );
+    expect(compactBaseCss).toMatch(
+      /\.session-area \{ min-height: 0; display: flex; flex: 1 0 auto; flex-direction: column;/u,
+    );
+    expect(compactBaseCss).toMatch(
+      /\.page-document-shell \{ min-width: 0; min-height: 0; display: flex; flex: 1 0 auto; flex-direction: column;/u,
+    );
+    expect(compactBaseCss).toMatch(
+      /\.note-editor-area \{ min-height: 0; display: flex; flex: 1 0 auto; flex-direction: column;/u,
+    );
+    expect(compactBaseCss).toContain(
+      '.note-editor-area > :where(.note-status, .sync-visibility-message) { flex: 0 0 auto;',
+    );
     expect(compactCss).toContain(
       '.page-note-editor .page-note-editor__isolated.iso-editor .edit-post-visual-editor',
     );

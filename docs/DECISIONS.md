@@ -135,3 +135,11 @@
 - Options considered: Use only the semantic version as the annotation; infer a label from each semantic-version component; keep the requested human-facing classification as a stable tag convention.
 - Consequences: Git tags retain exact `v<version>` identifiers while their annotations consistently communicate “Minor update”; package and Chrome manifest versions continue to use valid numeric version strings.
 - Follow-up tasks: Apply the convention when cutting every future version tag and update this decision if the requested release classification changes.
+
+## 2026-07-26 — Sanitize Gutenberg Mutations at the Persistence Boundary
+
+- Decision: Let the pinned Gutenberg paste/raw pipeline convert trusted clipboard HTML into live blocks, then rebuild every changed block array through PagePerch's existing safe text schema before serializing the document for local persistence or synchronization.
+- Context: Gutenberg correctly preserves useful semantic paste structure, but its allowed live block output can also retain arbitrary classes, inline styles, event attributes, embedded content, and unsafe link schemes that PagePerch must not store or upload.
+- Options considered: Store Gutenberg's raw mutation output; replace native paste with a custom clipboard handler; strip all formatting; preserve the native editor experience while projecting every mutation into the existing safe persistence schema.
+- Consequences: Safe headings, lists, quotes, code, emphasis, and links survive as Gutenberg blocks, while arbitrary CSS, active content, unsafe URLs, and unsupported blocks cannot cross the persistence boundary. The live editor state remains Gutenberg-owned, so removed unsafe presentation may remain visible until the next hydration even though it is never saved or synced; sanitization is bounded by the existing 2,000-block document limit and runs for every genuine edit.
+- Follow-up tasks: Manually verify trusted cross-application rich paste in the target Chrome side panel and keep genuine pinned-library adversarial tests whenever the editor dependency or supported block schema changes.

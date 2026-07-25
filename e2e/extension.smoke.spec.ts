@@ -639,6 +639,75 @@ test('opens the packaged editor for a supported HTTP tab without fatal runtime e
       fixtureUrl,
       'PagePerch editor fixture',
     );
+    const editor = panelPage.getByRole('region', {
+      name: 'Page note editor',
+    });
+    const root = editor.locator(
+      '.block-editor-block-list__layout.is-root-container',
+    );
+    await expect(root).toBeVisible();
+    expect(
+      await root.evaluate((rootElement) => {
+        const rootStyles = getComputedStyle(rootElement);
+        const writingFlow = rootElement.closest('.block-editor-writing-flow');
+        const writingFlowStyles =
+          writingFlow === null ? undefined : getComputedStyle(writingFlow);
+
+        return {
+          paddingBottom: writingFlowStyles?.paddingBottom,
+          paddingLeft: rootStyles.paddingLeft,
+          paddingRight: rootStyles.paddingRight,
+          paddingTop: writingFlowStyles?.paddingTop,
+        };
+      }),
+    ).toEqual({
+      paddingBottom: '0px',
+      paddingLeft: '16px',
+      paddingRight: '16px',
+      paddingTop: '0px',
+    });
+    await panelPage.setViewportSize({ width: 640, height: 720 });
+    expect(
+      await root.evaluate((rootElement) => {
+        const styles = getComputedStyle(rootElement);
+        return [styles.paddingLeft, styles.paddingRight];
+      }),
+    ).toEqual(['16px', '16px']);
+    await panelPage.setViewportSize({ width: 280, height: 720 });
+
+    const noteStatus = panelPage.locator('.note-status');
+    await expect(noteStatus).toBeVisible();
+    const shortNoteLayout = await root.evaluate((rootElement) => {
+      const editorRegion = rootElement.closest('.page-note-editor');
+      const noteArea = rootElement.closest('.note-editor-area');
+      const status = noteArea?.querySelector('.note-status');
+      const lastBlock = [...rootElement.children]
+        .filter((element) => element.matches('.wp-block'))
+        .at(-1);
+
+      if (
+        editorRegion === null ||
+        status === null ||
+        status === undefined ||
+        lastBlock === undefined
+      ) {
+        throw new Error('The short-note layout is incomplete.');
+      }
+
+      const editorBounds = editorRegion.getBoundingClientRect();
+      const lastBlockBounds = lastBlock.getBoundingClientRect();
+      const statusBounds = status.getBoundingClientRect();
+
+      return {
+        canvasBelowLastBlock: editorBounds.bottom - lastBlockBounds.bottom,
+        statusBottom: statusBounds.bottom,
+        viewportHeight: window.innerHeight,
+      };
+    });
+    expect(shortNoteLayout.canvasBelowLastBlock).toBeGreaterThan(24);
+    expect(shortNoteLayout.statusBottom).toBeLessThanOrEqual(
+      shortNoteLayout.viewportHeight + 1,
+    );
     await expect(
       panelPage.getByText('This note could not be opened safely'),
     ).toHaveCount(0);
