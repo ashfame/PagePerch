@@ -14,7 +14,7 @@ import {
   RepositoryStorageError,
   RepositoryValidationError,
 } from './repositoryErrors';
-import { isPageKey } from './validation';
+import { isPageKey, isSha256Base64Url } from './validation';
 
 const PAGE_KEY_A = 'A'.repeat(43);
 const PAGE_KEY_B = `${'B'.repeat(42)}A`;
@@ -26,6 +26,9 @@ const PAGE_KEY_OTHER = `${'O'.repeat(42)}A`;
 const PAGE_KEY_PORT = `${'P'.repeat(42)}A`;
 const PAGE_KEY_SUBDOMAIN = `${'S'.repeat(42)}A`;
 const PAGE_KEY_HTTP = `${'T'.repeat(42)}A`;
+const CONTENT_HASH_A = `${'H'.repeat(42)}A`;
+const CONTENT_HASH_B = `${'I'.repeat(42)}A`;
+const EMPTY_CONTENT_HASH = '47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU';
 
 function note(overrides: Partial<NoteRecordV1> = {}): NoteRecordV1 {
   return {
@@ -36,7 +39,7 @@ function note(overrides: Partial<NoteRecordV1> = {}): NoteRecordV1 {
     origin: 'https://example.com',
     title: 'Page A',
     contentHtml: '<!-- wp:paragraph --><p>A note</p><!-- /wp:paragraph -->',
-    contentHash: 'hash-a',
+    contentHash: CONTENT_HASH_A,
     savedAt: '2026-07-25T10:00:00.000Z',
     revisionId: 'revision-a',
     ...overrides,
@@ -78,7 +81,7 @@ describe('ChromeLocalNoteRepository', () => {
     );
     const tombstone = note({
       contentHtml: '',
-      contentHash: 'empty-hash',
+      contentHash: EMPTY_CONTENT_HASH,
       deletedAt: '2026-07-25T10:00:00.000Z',
     });
 
@@ -509,7 +512,7 @@ describe('ChromeLocalNoteRepository', () => {
       canonicalUrl: 'https://example.com/b',
       representativeUrl: 'https://example.com/b',
       title: 'Page B',
-      contentHash: 'hash-b',
+      contentHash: CONTENT_HASH_B,
       revisionId: 'revision-b',
     });
 
@@ -732,6 +735,32 @@ describe('ChromeLocalNoteRepository', () => {
     'lKsgh_TEzhnSSM-6ueKxnMUGXkQ1EPfzfKtzR6qn3ww',
   ])('accepts PP-002 fixed SHA-256 page key %s', (pageKey) => {
     expect(isPageKey(pageKey)).toBe(true);
+  });
+
+  it.each([
+    EMPTY_CONTENT_HASH,
+    'ungWv48Bz-pBQUDeXa4iI7ADYaOWF3qctBD_YfIAFa0',
+    CONTENT_HASH_A,
+  ])('accepts canonical SHA-256 content hash %s', (contentHash) => {
+    expect(isSha256Base64Url(contentHash)).toBe(true);
+  });
+
+  it.each([
+    '',
+    'hash-a',
+    'A'.repeat(42),
+    'A'.repeat(44),
+    `${'A'.repeat(42)}!`,
+    `${'A'.repeat(42)}B`,
+  ])('rejects invalid note content hash %j', async (contentHash) => {
+    const repository = new ChromeLocalNoteRepository(
+      new InMemoryChromeStorage(),
+    );
+
+    expect(isSha256Base64Url(contentHash)).toBe(false);
+    await expect(repository.put(note({ contentHash }))).rejects.toBeInstanceOf(
+      RepositoryValidationError,
+    );
   });
 
   it.each([

@@ -26,7 +26,7 @@ describe('Chrome repository storage selection', () => {
       title: 'Default storage',
       contentHtml:
         '<!-- wp:paragraph --><p>Stored locally.</p><!-- /wp:paragraph -->',
-      contentHash: 'default-hash',
+      contentHash: `${'D'.repeat(42)}A`,
       savedAt: '2026-07-25T10:00:00Z',
       revisionId: 'default-revision',
     } as const;
@@ -57,7 +57,7 @@ describe('Chrome repository storage selection', () => {
       title: 'Locked storage',
       contentHtml:
         '<!-- wp:paragraph --><p>Coordinated.</p><!-- /wp:paragraph -->',
-      contentHash: 'locked-hash',
+      contentHash: `${'L'.repeat(42)}A`,
       savedAt: '2026-07-25T10:00:00Z',
       revisionId: 'locked-revision',
     } as const;

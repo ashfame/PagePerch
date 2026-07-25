@@ -34,6 +34,10 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 export function isPageKey(value: unknown): value is string {
+  return isSha256Base64Url(value);
+}
+
+export function isSha256Base64Url(value: unknown): value is string {
   return (
     typeof value === 'string' &&
     /^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/u.test(value)
@@ -134,7 +138,7 @@ export function isNoteRecordV1(value: unknown): value is NoteRecordV1 {
     !isCanonicalHttpUrlForOrigin(value.representativeUrl, value.origin) ||
     typeof value.title !== 'string' ||
     typeof value.contentHtml !== 'string' ||
-    !isNonEmptyString(value.contentHash) ||
+    !isSha256Base64Url(value.contentHash) ||
     !isUtcIsoTimestamp(value.savedAt) ||
     !isNonEmptyString(value.revisionId)
   ) {

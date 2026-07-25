@@ -46,14 +46,14 @@
 
 ## PP-003B — Implement Local-First Note Service
 
-- Status: not started
+- Status: completed
 - Priority: P0
 - Dependencies: PP-003A
 - Spec or plan references: Internal interfaces; Data model; Side panel autosave/delete/index semantics
 - Acceptance criteria: `NoteService` validates inputs, normalizes and hashes Gutenberg HTML, writes locally before reporting success, skips unchanged content/metadata, generates timestamps/revisions only for actual changes, writes logical tombstones for existing clears, creates no record for untouched clears, and returns recent non-deleted exact-origin indexes.
 - Suggested files: `src/services/note*`, domain types, tests
 - Test expectations: Deterministic service tests for create/update/unchanged/metadata/title/clear/tombstone/index behavior, injected clock/revision factory, storage failures, and large content
-- Notes: Keep timestamps, revision generation, and optional outbound-queue notification injectable; remote synchronization remains PP-007.
+- Notes: Accepted after corrective review and 57 focused service cases. Mutation clocks and revision IDs are injectable; local writes are awaited; same-page mutations are serialized; normalized empty content creates no untouched record, tombstones an existing live record, and leaves an existing tombstone unchanged. Remote synchronization remains PP-007.
 
 ## PP-004 — Add Per-Page Editor and Origin Index
 
