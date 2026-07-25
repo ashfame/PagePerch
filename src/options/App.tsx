@@ -18,6 +18,10 @@ import type { SettingsRepository } from '../repositories/settingsRepository';
 import type { ByosCoordinator } from '../services/byosCoordinator';
 import { ByosError } from '../services/byosError';
 import type { IdentityMigrationExecutor } from '../services/identityMigrationExecutor';
+import type {
+  PendingSyncCount,
+  PendingSyncCountState,
+} from '../sync/syncVisibility';
 import '../styles/base.css';
 import './App.css';
 import {
@@ -42,6 +46,7 @@ export interface OptionsAppDependencies {
   readonly byos: OptionsByosDependencies;
   readonly migration: MigrationPort;
   readonly settings: SettingsPort;
+  readonly pendingSyncCount?: PendingSyncCount;
   readonly syncMessages?: Pick<
     SyncRuntimeMessagePort,
     'invalidateCredentials' | 'request'
@@ -185,6 +190,47 @@ function byosActionFailure(
   return 'BYOS connection was not completed. Retry the connection.';
 }
 
+function usePendingSyncCount(
+  pendingSyncCount: PendingSyncCount | undefined,
+): PendingSyncCountState | undefined {
+  const [state, setState] = useState<PendingSyncCountState>();
+
+  useEffect(() => {
+    if (pendingSyncCount === undefined) {
+      return;
+    }
+
+    const connection = pendingSyncCount.connect(setState);
+
+    return () => {
+      connection.disconnect();
+    };
+  }, [pendingSyncCount]);
+
+  return pendingSyncCount === undefined ? undefined : state;
+}
+
+function PendingSyncCountView({
+  state,
+}: {
+  readonly state: PendingSyncCountState | undefined;
+}) {
+  return (
+    <dl className="byos-details pending-sync-details">
+      <div>
+        <dt>Pages waiting to sync</dt>
+        <dd aria-live="polite">
+          {state === undefined || state.status === 'loading'
+            ? 'Checking…'
+            : state.status === 'error'
+              ? 'Unavailable'
+              : `${state.count} ${state.count === 1 ? 'page' : 'pages'}`}
+        </dd>
+      </div>
+    </dl>
+  );
+}
+
 export function OptionsApp({ dependencies }: OptionsAppProps) {
   const [view, setView] = useState<ViewState>({ status: 'loading' });
   const [busy, setBusy] = useState<BusyOperation>();
@@ -195,6 +241,7 @@ export function OptionsApp({ dependencies }: OptionsAppProps) {
   const [parameterInput, setParameterInput] = useState('');
   const loadRevision = useRef(0);
   const operationInFlight = useRef(false);
+  const pendingSyncCount = usePendingSyncCount(dependencies.pendingSyncCount);
 
   const loadSettings = useCallback(async () => {
     const revision = loadRevision.current + 1;
@@ -692,6 +739,7 @@ export function OptionsApp({ dependencies }: OptionsAppProps) {
             </p>
             <p>Local storage is always on and cannot be disabled.</p>
             <p>Connecting BYOS does not turn local storage off.</p>
+            <PendingSyncCountView state={pendingSyncCount} />
 
             {isByosStatusUnknown ? (
               <div className="byos-connection">

@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type ComponentType } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+} from 'react';
 
 import '../styles/base.css';
 import type { CanonicalPageOpener } from './chromeCanonicalPageOpener';
@@ -20,6 +27,11 @@ import type {
   RootRecentNotesIndex,
   RootRecentNotesState,
 } from './rootRecentNotes';
+import type {
+  PageSyncVisibility,
+  PageSyncVisibilityConnection,
+  PageSyncVisibilityState,
+} from '../sync/syncVisibility';
 
 export type {
   CreatePageNoteDraftRuntime,
@@ -39,6 +51,7 @@ export interface SidePanelAppProps {
   readonly Editor: ComponentType<PageNoteEditorProps>;
   readonly openSettings: () => void | Promise<void>;
   readonly pageOpener: CanonicalPageOpener;
+  readonly pageSyncVisibility?: PageSyncVisibility;
   readonly recentNotesIndex: RootRecentNotesIndex;
 }
 
@@ -214,17 +227,59 @@ interface PageNoteDraftView {
   readonly retryOwnership: () => void;
 }
 
+interface LocalSaveSyncEvidencePort {
+  beginLocalSave(): void;
+  clearLocalSave(): void;
+  completeLocalSave(): void;
+}
+
 const NOTE_RUNTIME_ERROR =
   'PagePerch could not prepare this local note. Retry.';
 function usePageNoteDraft(
   session: SupportedActivePageSessionState | undefined,
   ownership: PageNoteOwnership,
+  syncEvidence: LocalSaveSyncEvidencePort,
 ): PageNoteDraftView {
   const [view, setView] = useState<PageNoteOwnershipView>();
   const connectionRef = useRef<PageNoteOwnershipConnection>();
+  const saveLifecycleRef = useRef<{
+    pageKey: string | undefined;
+    phase: 'idle' | 'saving' | 'saved-locally' | 'save-error' | undefined;
+  }>({ pageKey: undefined, phase: undefined });
 
   useEffect(() => {
-    const connection = ownership.connect(setView);
+    const connection = ownership.connect((view) => {
+      const savePhase =
+        view?.status === 'state' && view.state.status === 'ready'
+          ? view.state.save.phase
+          : undefined;
+      const previous = saveLifecycleRef.current;
+      const samePage = view?.pageKey === previous.pageKey;
+
+      if (
+        savePhase === 'saving' &&
+        (!samePage || previous.phase !== 'saving')
+      ) {
+        syncEvidence.beginLocalSave();
+      } else if (
+        savePhase === 'saved-locally' &&
+        (!samePage ||
+          (previous.phase !== 'saving' && previous.phase !== 'saved-locally'))
+      ) {
+        syncEvidence.beginLocalSave();
+        syncEvidence.completeLocalSave();
+      } else if (savePhase === 'saved-locally' && previous.phase === 'saving') {
+        syncEvidence.completeLocalSave();
+      } else if (savePhase !== 'saving' && savePhase !== 'saved-locally') {
+        syncEvidence.clearLocalSave();
+      }
+
+      saveLifecycleRef.current = {
+        pageKey: view?.pageKey,
+        phase: savePhase,
+      };
+      setView(view);
+    });
     connectionRef.current = connection;
 
     return () => {
@@ -234,7 +289,7 @@ function usePageNoteDraft(
 
       connection.disconnect();
     };
-  }, [ownership]);
+  }, [ownership, syncEvidence]);
 
   useEffect(() => {
     connectionRef.current?.setSession(session);
@@ -285,6 +340,321 @@ function useRootRecentNotes(
     },
     state,
   };
+}
+
+interface PageSyncVisibilityView {
+  readonly evidence: LocalSaveSyncEvidencePort;
+  readonly state: PageSyncVisibilityState | undefined;
+  readonly trustRemoteClaim: boolean;
+}
+
+interface LocalSaveSyncEvidence {
+  baselineHistoryKnown: boolean;
+  baselineLastSuccessfulSyncAt: string | undefined;
+  baselinePendingRevisionId: string | undefined;
+  lastPendingRevisionId: string | undefined;
+  observedPendingRevisionId: string | undefined;
+  phase: 'inactive' | 'saved' | 'saving';
+  trustRemoteClaim: boolean;
+}
+
+interface PageSyncVisibilityPresentation {
+  readonly state: PageSyncVisibilityState | undefined;
+  readonly trustRemoteClaim: boolean;
+}
+
+function pendingRevisionId(
+  state: PageSyncVisibilityState | undefined,
+): string | undefined {
+  return state?.status === 'ready' ? state.pendingRevisionId : undefined;
+}
+
+function hasKnownRemoteHistory(
+  state: PageSyncVisibilityState | undefined,
+): boolean {
+  return (
+    state?.status === 'ready' &&
+    state.mode !== 'unavailable' &&
+    state.mode !== 'waiting-unavailable'
+  );
+}
+
+function hasNewerSuccessfulSync(
+  evidence: LocalSaveSyncEvidence,
+  state: PageSyncVisibilityState,
+): boolean {
+  if (
+    state.status !== 'ready' ||
+    !evidence.baselineHistoryKnown ||
+    state.lastSuccessfulSyncAt === undefined
+  ) {
+    return false;
+  }
+
+  if (evidence.baselineLastSuccessfulSyncAt === undefined) {
+    return true;
+  }
+
+  const baseline = new Date(evidence.baselineLastSuccessfulSyncAt).valueOf();
+  const current = new Date(state.lastSuccessfulSyncAt).valueOf();
+
+  return (
+    Number.isFinite(baseline) && Number.isFinite(current) && current > baseline
+  );
+}
+
+function observeSyncEvidence(
+  evidence: LocalSaveSyncEvidence,
+  state: PageSyncVisibilityState | undefined,
+): void {
+  if (
+    evidence.phase === 'inactive' ||
+    state === undefined ||
+    state.status !== 'ready'
+  ) {
+    return;
+  }
+
+  const pendingRevision = state.pendingRevisionId;
+
+  if (pendingRevision !== undefined) {
+    if (pendingRevision !== evidence.baselinePendingRevisionId) {
+      evidence.observedPendingRevisionId = pendingRevision;
+    }
+
+    evidence.lastPendingRevisionId = pendingRevision;
+    evidence.trustRemoteClaim = false;
+    return;
+  }
+
+  if (
+    evidence.observedPendingRevisionId !== undefined &&
+    evidence.lastPendingRevisionId === evidence.observedPendingRevisionId
+  ) {
+    evidence.trustRemoteClaim = true;
+  }
+
+  if (hasNewerSuccessfulSync(evidence, state)) {
+    evidence.trustRemoteClaim = true;
+  }
+
+  evidence.lastPendingRevisionId = undefined;
+}
+
+function usePageSyncVisibility(
+  session: SupportedActivePageSessionState | undefined,
+  visibility: PageSyncVisibility | undefined,
+): PageSyncVisibilityView {
+  const [presentation, setPresentation] =
+    useState<PageSyncVisibilityPresentation>({
+      state: undefined,
+      trustRemoteClaim: true,
+    });
+  const stateRef = useRef<PageSyncVisibilityState>();
+  const evidenceRef = useRef<LocalSaveSyncEvidence>({
+    baselineHistoryKnown: false,
+    baselineLastSuccessfulSyncAt: undefined,
+    baselinePendingRevisionId: undefined,
+    lastPendingRevisionId: undefined,
+    observedPendingRevisionId: undefined,
+    phase: 'inactive',
+    trustRemoteClaim: true,
+  });
+  const connectionRef = useRef<PageSyncVisibilityConnection>();
+  const beginLocalSave = useCallback(() => {
+    const current = stateRef.current;
+    const currentPendingRevision = pendingRevisionId(current);
+    evidenceRef.current = {
+      baselineHistoryKnown: hasKnownRemoteHistory(current),
+      baselineLastSuccessfulSyncAt:
+        current?.status === 'ready' ? current.lastSuccessfulSyncAt : undefined,
+      baselinePendingRevisionId: currentPendingRevision,
+      lastPendingRevisionId: currentPendingRevision,
+      observedPendingRevisionId: undefined,
+      phase: 'saving',
+      trustRemoteClaim: false,
+    };
+    setPresentation((previous) => ({
+      ...previous,
+      trustRemoteClaim: false,
+    }));
+  }, []);
+  const clearLocalSave = useCallback(() => {
+    evidenceRef.current.phase = 'inactive';
+    evidenceRef.current.trustRemoteClaim = true;
+    setPresentation((previous) => ({
+      ...previous,
+      trustRemoteClaim: true,
+    }));
+  }, []);
+  const completeLocalSave = useCallback(() => {
+    if (evidenceRef.current.phase !== 'saving') {
+      return;
+    }
+
+    evidenceRef.current.phase = 'saved';
+    const trustRemoteClaim = evidenceRef.current.trustRemoteClaim;
+    setPresentation((previous) => ({
+      ...previous,
+      trustRemoteClaim,
+    }));
+  }, []);
+  const evidence = useMemo(
+    () => ({
+      beginLocalSave,
+      clearLocalSave,
+      completeLocalSave,
+    }),
+    [beginLocalSave, clearLocalSave, completeLocalSave],
+  );
+
+  useEffect(() => {
+    if (visibility === undefined) {
+      connectionRef.current = undefined;
+      return;
+    }
+
+    const connection = visibility.connect((nextState) => {
+      const previousState = stateRef.current;
+
+      if (previousState?.pageKey !== nextState?.pageKey) {
+        evidenceRef.current.phase = 'inactive';
+        evidenceRef.current.trustRemoteClaim = true;
+      } else {
+        observeSyncEvidence(evidenceRef.current, nextState);
+      }
+
+      stateRef.current = nextState;
+      setPresentation({
+        state: nextState,
+        trustRemoteClaim: evidenceRef.current.trustRemoteClaim,
+      });
+    });
+    connectionRef.current = connection;
+
+    return () => {
+      if (connectionRef.current === connection) {
+        connectionRef.current = undefined;
+      }
+
+      connection.disconnect();
+    };
+  }, [visibility]);
+
+  useEffect(() => {
+    connectionRef.current?.setPage(session?.identity.pageKey);
+  }, [session, visibility]);
+
+  return {
+    evidence,
+    state: visibility === undefined ? undefined : presentation.state,
+    trustRemoteClaim: presentation.trustRemoteClaim,
+  };
+}
+
+function PageSyncStatus({
+  locallySaved,
+  pageKey,
+  state,
+  trustRemoteClaim,
+}: {
+  readonly locallySaved: boolean;
+  readonly pageKey: string;
+  readonly state: PageSyncVisibilityState | undefined;
+  readonly trustRemoteClaim: boolean;
+}) {
+  const activeState = state?.pageKey === pageKey ? state : undefined;
+
+  if (activeState === undefined || activeState.status === 'loading') {
+    return locallySaved ? (
+      <p className="status note-status" role="status" aria-live="polite">
+        Saved locally
+      </p>
+    ) : null;
+  }
+
+  if (activeState.status === 'error') {
+    return (
+      <div className="sync-visibility-message">
+        <p className="status note-status" role="status" aria-live="polite">
+          {locallySaved
+            ? 'Saved locally · BYOS sync status unavailable'
+            : 'BYOS sync status unavailable'}
+        </p>
+        <p className="sync-status-detail">
+          Editing and local saves remain available. Open settings to review
+          BYOS.
+        </p>
+      </div>
+    );
+  }
+
+  switch (activeState.mode) {
+    case 'waiting':
+      return (
+        <p className="status note-status" role="status" aria-live="polite">
+          Waiting to sync
+        </p>
+      );
+    case 'waiting-reconnect':
+      return (
+        <div className="sync-visibility-message">
+          <p className="status note-status" role="status" aria-live="polite">
+            Waiting to sync
+          </p>
+          <p className="sync-status-detail">
+            Reconnect BYOS in settings. Your note remains saved locally.
+          </p>
+        </div>
+      );
+    case 'waiting-unavailable':
+      return (
+        <div className="sync-visibility-message">
+          <p className="status note-status" role="status" aria-live="polite">
+            Waiting to sync
+          </p>
+          <p className="sync-status-detail">
+            BYOS is unavailable in this build. Your note remains saved locally.
+          </p>
+        </div>
+      );
+    case 'synced':
+      return (
+        <p className="status note-status" role="status" aria-live="polite">
+          {locallySaved && !trustRemoteClaim
+            ? 'Saved locally'
+            : 'Synced to BYOS'}
+        </p>
+      );
+    case 'checking':
+      return (
+        <p className="status note-status" role="status" aria-live="polite">
+          {locallySaved
+            ? trustRemoteClaim
+              ? 'Saved locally · Checking BYOS'
+              : 'Saved locally'
+            : 'Checking BYOS'}
+        </p>
+      );
+    case 'local-only':
+    case 'unavailable':
+      return (
+        <p className="status note-status" role="status" aria-live="polite">
+          {locallySaved ? 'Saved locally' : 'Local only'}
+        </p>
+      );
+    case 'reconnect-required':
+      return (
+        <div className="sync-visibility-message">
+          <p className="status note-status" role="status" aria-live="polite">
+            {locallySaved ? 'Saved locally · Reconnect BYOS' : 'Reconnect BYOS'}
+          </p>
+          <p className="sync-status-detail">
+            Reconnect BYOS in settings. Local notes remain available.
+          </p>
+        </div>
+      );
+  }
 }
 
 function recentNoteTitle(entry: RootRecentNoteEntry): string {
@@ -456,11 +826,15 @@ function SupportedPageShell({
   session,
   draft,
   retryOwnership,
+  syncVisibility,
+  trustRemoteClaim,
   Editor,
 }: {
   readonly session: SupportedActivePageSessionState;
   readonly draft?: PageNoteOwnershipView;
   readonly retryOwnership: () => void;
+  readonly syncVisibility?: PageSyncVisibilityState;
+  readonly trustRemoteClaim: boolean;
   readonly Editor: ComponentType<PageNoteEditorProps>;
 }) {
   const pageTitle = session.title.trim();
@@ -595,10 +969,6 @@ function SupportedPageShell({
             <p className="status note-status" role="status" aria-live="polite">
               Saving
             </p>
-          ) : activeDraft.state.save.phase === 'saved-locally' ? (
-            <p className="status note-status" role="status" aria-live="polite">
-              Saved locally
-            </p>
           ) : activeDraft.state.save.phase === 'save-error' ? (
             <div className="note-action-panel">
               <p className="session-alert" role="alert">
@@ -616,7 +986,14 @@ function SupportedPageShell({
                 Retry saving note
               </button>
             </div>
-          ) : null}
+          ) : (
+            <PageSyncStatus
+              locallySaved={activeDraft.state.save.phase === 'saved-locally'}
+              pageKey={session.identity.pageKey}
+              state={syncVisibility}
+              trustRemoteClaim={trustRemoteClaim}
+            />
+          )}
         </div>
       )}
       {actionError === undefined ? null : (
@@ -679,12 +1056,14 @@ function SessionArea({
   draftOwnership,
   Editor,
   pageOpener,
+  pageSyncVisibility,
   recentNotesIndex,
 }: {
   readonly view: SessionView;
   readonly draftOwnership: PageNoteOwnership;
   readonly Editor: ComponentType<PageNoteEditorProps>;
   readonly pageOpener: CanonicalPageOpener;
+  readonly pageSyncVisibility?: PageSyncVisibility;
   readonly recentNotesIndex: RootRecentNotesIndex;
 }) {
   const flushError =
@@ -701,8 +1080,13 @@ function SessionArea({
         : view.lastSupported;
   const transient =
     view.current.status === 'supported' ? undefined : view.current;
-  const draft = usePageNoteDraft(supported, draftOwnership);
   const recentNotes = useRootRecentNotes(supported, recentNotesIndex);
+  const syncVisibility = usePageSyncVisibility(supported, pageSyncVisibility);
+  const draft = usePageNoteDraft(
+    supported,
+    draftOwnership,
+    syncVisibility.evidence,
+  );
 
   return (
     <div className="session-area">
@@ -718,6 +1102,8 @@ function SessionArea({
             session={supported}
             draft={draft.view}
             retryOwnership={draft.retryOwnership}
+            syncVisibility={syncVisibility.state}
+            trustRemoteClaim={syncVisibility.trustRemoteClaim}
             Editor={Editor}
           />
           {supported.identity.isRoot ? (
@@ -743,6 +1129,7 @@ export function SidePanelApp({
   Editor,
   openSettings,
   pageOpener,
+  pageSyncVisibility,
   recentNotesIndex,
 }: SidePanelAppProps) {
   const view = useActivePageSession(createController);
@@ -800,6 +1187,7 @@ export function SidePanelApp({
         draftOwnership={draftOwnership}
         Editor={Editor}
         pageOpener={pageOpener}
+        pageSyncVisibility={pageSyncVisibility}
         recentNotesIndex={recentNotesIndex}
       />
 

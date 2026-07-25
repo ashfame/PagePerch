@@ -14,6 +14,11 @@ import type {
   PageNoteDraftPageContext,
   PageNoteDraftState,
 } from './pageNoteDraft';
+import type {
+  PageSyncVisibility,
+  PageSyncVisibilityConnection,
+  PageSyncVisibilityState,
+} from '../sync/syncVisibility';
 import {
   DefaultPageNoteOwnership,
   type CreatePageNoteDraftRuntime,
@@ -147,6 +152,29 @@ class FakeRootRecentNotesIndex implements RootRecentNotesIndex {
   }
 }
 
+class FakePageSyncVisibility implements PageSyncVisibility {
+  readonly disconnect = vi.fn();
+  readonly setPage = vi.fn();
+  readonly connect = vi.fn(
+    (
+      emitState: (state: PageSyncVisibilityState | undefined) => void,
+    ): PageSyncVisibilityConnection => {
+      this.emitState = emitState;
+
+      return {
+        disconnect: this.disconnect,
+        setPage: this.setPage,
+      };
+    },
+  );
+  private emitState:
+    ((state: PageSyncVisibilityState | undefined) => void) | undefined;
+
+  emit(state: PageSyncVisibilityState | undefined): void {
+    this.emitState?.(state);
+  }
+}
+
 interface RecentNotesTestPorts {
   readonly index: RootRecentNotesIndex;
   readonly opener: CanonicalPageOpener;
@@ -263,6 +291,7 @@ function renderApp(
     readonly strict?: boolean;
     readonly openSettings?: () => void | Promise<void>;
     readonly draftPorts?: DraftTestPorts;
+    readonly pageSyncVisibility?: PageSyncVisibility;
     readonly recentNotesPorts?: RecentNotesTestPorts;
   } = {},
 ) {
@@ -278,6 +307,8 @@ function renderApp(
   const draftPorts = options.draftPorts ?? createDraftTestPorts();
   const recentNotesPorts =
     options.recentNotesPorts ?? createRecentNotesTestPorts();
+  const pageSyncVisibility =
+    options.pageSyncVisibility ?? new FakePageSyncVisibility();
   const app = (
     <SidePanelApp
       createController={createController}
@@ -285,6 +316,7 @@ function renderApp(
       Editor={draftPorts.Editor}
       openSettings={openSettings}
       pageOpener={recentNotesPorts.opener}
+      pageSyncVisibility={pageSyncVisibility}
       recentNotesIndex={recentNotesPorts.index}
     />
   );
@@ -303,6 +335,7 @@ function renderApp(
     controller,
     createController,
     openSettings,
+    pageSyncVisibility,
     ...draftPorts,
     ...recentNotesPorts,
   };
@@ -340,6 +373,15 @@ function readyDraftState(
 function emitDraft(draft: FakeDraftRuntime, state: PageNoteDraftState): void {
   act(() => {
     draft.emit(state);
+  });
+}
+
+function emitSyncVisibility(
+  visibility: FakePageSyncVisibility,
+  state: PageSyncVisibilityState | undefined,
+): void {
+  act(() => {
+    visibility.emit(state);
   });
 }
 
@@ -655,6 +697,190 @@ describe('SidePanelApp local note composition', () => {
 
     await user.click(screen.getByRole('button', { name: 'Retry saving note' }));
     expect(draft.retry).toHaveBeenCalledOnce();
+  });
+
+  it('shows passive queue-derived BYOS states without remounting the editor', async () => {
+    const pageSyncVisibility = new FakePageSyncVisibility();
+    const { controller, drafts } = renderApp({ pageSyncVisibility });
+    const session = supportedSession();
+    emit(controller, session);
+    await settleReact();
+    const draft = drafts[0];
+
+    if (draft === undefined) {
+      throw new Error('Expected the supported page draft runtime.');
+    }
+
+    emitDraft(draft, readyDraftState());
+    const editor = screen.getByTestId('fake-page-note-editor');
+
+    emitSyncVisibility(pageSyncVisibility, {
+      status: 'ready',
+      mode: 'checking',
+      pageKey: session.identity.pageKey,
+    });
+    expect(screen.getByRole('status')).toHaveTextContent(/^Checking BYOS$/u);
+
+    emitSyncVisibility(pageSyncVisibility, {
+      status: 'ready',
+      mode: 'waiting',
+      pageKey: session.identity.pageKey,
+      pendingRevisionId: 'revision-2',
+    });
+    expect(screen.getByRole('status')).toHaveTextContent(/^Waiting to sync$/u);
+
+    emitSyncVisibility(pageSyncVisibility, {
+      status: 'ready',
+      mode: 'waiting-unavailable',
+      pageKey: session.identity.pageKey,
+      pendingRevisionId: 'revision-2',
+    });
+    expect(screen.getByRole('status')).toHaveTextContent(/^Waiting to sync$/u);
+    expect(
+      screen.getByText(/BYOS is unavailable in this build/u),
+    ).toBeInTheDocument();
+
+    emitSyncVisibility(pageSyncVisibility, {
+      status: 'ready',
+      mode: 'synced',
+      pageKey: session.identity.pageKey,
+      lastSuccessfulSyncAt: '2026-07-25T11:00:00.000Z',
+    });
+    expect(screen.getByRole('status')).toHaveTextContent(/^Synced to BYOS$/u);
+    expect(screen.getByTestId('fake-page-note-editor')).toBe(editor);
+  });
+
+  it('requires a post-save pending revision and its removal before restoring a synced claim', async () => {
+    const pageSyncVisibility = new FakePageSyncVisibility();
+    const { controller, drafts } = renderApp({ pageSyncVisibility });
+    const session = supportedSession();
+    emit(controller, session);
+    await settleReact();
+    const draft = drafts[0];
+
+    if (draft === undefined) {
+      throw new Error('Expected the supported page draft runtime.');
+    }
+
+    emitDraft(draft, readyDraftState());
+    emitSyncVisibility(pageSyncVisibility, {
+      status: 'ready',
+      mode: 'synced',
+      pageKey: session.identity.pageKey,
+      lastSuccessfulSyncAt: '2026-07-25T11:00:00.000Z',
+    });
+    const editor = screen.getByTestId('fake-page-note-editor');
+    emitDraft(draft, readyDraftState({ save: { phase: 'saving' } }));
+    emitDraft(draft, readyDraftState({ save: { phase: 'saved-locally' } }));
+    expect(screen.getByRole('status')).toHaveTextContent(/^Saved locally$/u);
+
+    emitSyncVisibility(pageSyncVisibility, {
+      status: 'ready',
+      mode: 'synced',
+      pageKey: session.identity.pageKey,
+      lastSuccessfulSyncAt: '2026-07-25T11:00:00.000Z',
+    });
+    expect(screen.getByRole('status')).toHaveTextContent(/^Saved locally$/u);
+
+    emitSyncVisibility(pageSyncVisibility, {
+      status: 'ready',
+      mode: 'waiting',
+      pageKey: session.identity.pageKey,
+      pendingRevisionId: 'revision-after-save',
+      lastSuccessfulSyncAt: '2026-07-25T11:00:00.000Z',
+    });
+    expect(screen.getByRole('status')).toHaveTextContent(/^Waiting to sync$/u);
+
+    emitSyncVisibility(pageSyncVisibility, {
+      status: 'ready',
+      mode: 'synced',
+      pageKey: session.identity.pageKey,
+      lastSuccessfulSyncAt: '2026-07-25T11:00:00.000Z',
+    });
+    expect(screen.getByRole('status')).toHaveTextContent(/^Synced to BYOS$/u);
+    expect(screen.getByTestId('fake-page-note-editor')).toBe(editor);
+  });
+
+  it('accepts only a strictly newer successful-sync watermark without queue evidence', async () => {
+    const pageSyncVisibility = new FakePageSyncVisibility();
+    const { controller, drafts } = renderApp({ pageSyncVisibility });
+    const session = supportedSession();
+    emit(controller, session);
+    await settleReact();
+    const draft = drafts[0];
+
+    if (draft === undefined) {
+      throw new Error('Expected the supported page draft runtime.');
+    }
+
+    emitDraft(draft, readyDraftState());
+    emitSyncVisibility(pageSyncVisibility, {
+      status: 'ready',
+      mode: 'synced',
+      pageKey: session.identity.pageKey,
+      lastSuccessfulSyncAt: '2026-07-25T11:00:00.000Z',
+    });
+    emitDraft(draft, readyDraftState({ save: { phase: 'saving' } }));
+    emitDraft(draft, readyDraftState({ save: { phase: 'saved-locally' } }));
+
+    emitSyncVisibility(pageSyncVisibility, {
+      status: 'ready',
+      mode: 'synced',
+      pageKey: session.identity.pageKey,
+      lastSuccessfulSyncAt: '2026-07-25T11:01:00.000Z',
+    });
+    expect(screen.getByRole('status')).toHaveTextContent(/^Synced to BYOS$/u);
+  });
+
+  it('contains sync visibility failures and ignores stale page states', async () => {
+    const pageSyncVisibility = new FakePageSyncVisibility();
+    const { controller, drafts } = renderApp({ pageSyncVisibility });
+    const first = supportedSession();
+    emit(controller, first);
+    await settleReact();
+    const firstDraft = drafts[0];
+
+    if (firstDraft === undefined) {
+      throw new Error('Expected the first supported page draft runtime.');
+    }
+
+    emitDraft(firstDraft, readyDraftState());
+    emitSyncVisibility(pageSyncVisibility, {
+      status: 'error',
+      pageKey: first.identity.pageKey,
+    });
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'BYOS sync status unavailable',
+    );
+    expect(screen.getByTestId('fake-page-note-editor')).toBeInTheDocument();
+
+    const second = supportedSession({
+      identity: {
+        ...first.identity,
+        canonicalUrl: 'https://example.com/second',
+        pageKey: `${'B'.repeat(42)}E`,
+        pathname: '/second',
+      },
+      representativeUrl: 'https://example.com/second',
+    });
+    emit(controller, second);
+    await settleReact();
+    const secondDraft = drafts[1];
+
+    if (secondDraft === undefined) {
+      throw new Error('Expected the second supported page draft runtime.');
+    }
+
+    emitDraft(secondDraft, readyDraftState());
+    emitSyncVisibility(pageSyncVisibility, {
+      status: 'ready',
+      mode: 'synced',
+      pageKey: first.identity.pageKey,
+    });
+    expect(screen.queryByText('Synced to BYOS')).not.toBeInTheDocument();
+    expect(pageSyncVisibility.setPage).toHaveBeenLastCalledWith(
+      second.identity.pageKey,
+    );
   });
 
   it('renders an actionable cached-note load error and observes its retry', async () => {

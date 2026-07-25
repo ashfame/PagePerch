@@ -9,8 +9,10 @@ import {
 import { ChromeLocalNoteRepository } from '../repositories/chromeLocalNoteRepository';
 import { ChromeLocalSettingsRepository } from '../repositories/chromeLocalSettingsRepository';
 import { ChromeLocalSyncQueue } from '../repositories/chromeLocalSyncQueue';
+import { ChromeSyncVisibilityChanges } from '../repositories/chromeSyncVisibilityChanges';
 import { DefaultNoteService } from '../services/note';
 import { DefaultPageIdentityService } from '../services/pageIdentity';
+import { DefaultPageSyncVisibility } from '../sync/syncVisibility';
 import { SidePanelApp, type CreateActivePageSessionController } from './App';
 import { PageNoteEditor } from './PageNoteEditor';
 import { ActivePageSessionController } from './activePageSession';
@@ -41,14 +43,22 @@ const settingsRepository = new ChromeLocalSettingsRepository();
 const noteRepository = new ChromeLocalNoteRepository();
 const syncClock = () => new Date();
 const syncMessages = new SyncRuntimeMessagePort();
+const byosConfig = readByosClientConfig();
 const syncQueue = new ChromeLocalSyncQueue({
   clock: syncClock,
   random: Math.random,
 });
+const pageSyncVisibility = new DefaultPageSyncVisibility({
+  changes: new ChromeSyncVisibilityChanges(),
+  clock: syncClock,
+  config: byosConfig,
+  queue: syncQueue,
+  settings: settingsRepository,
+});
 const noteService = new DefaultNoteService({
   repository: noteRepository,
   onLocalMutation: createLocalMutationSyncObserver({
-    config: readByosClientConfig(),
+    config: byosConfig,
     settings: settingsRepository,
     queue: syncQueue,
     messages: syncMessages,
@@ -97,6 +107,7 @@ createRoot(rootElement).render(
       Editor={PageNoteEditor}
       openSettings={() => chrome.runtime.openOptionsPage()}
       pageOpener={pageOpener}
+      pageSyncVisibility={pageSyncVisibility}
       recentNotesIndex={recentNotesIndex}
     />
   </StrictMode>,

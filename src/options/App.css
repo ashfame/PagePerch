@@ -169,8 +169,7 @@ button.secondary-button:hover {
   font-size: 1rem;
 }
 
-.byos-connection,
-.sync-boundary {
+.byos-connection {
   margin-top: 1.25rem;
   padding-top: 1.25rem;
   border-top: 1px solid var(--border);
@@ -227,8 +226,11 @@ button.secondary-button:hover {
   justify-self: start;
 }
 
-.sync-boundary p {
-  font-size: 0.85rem;
+.pending-sync-details {
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: var(--surface-muted);
 }
 
 .options-notice {

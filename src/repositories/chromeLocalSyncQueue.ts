@@ -127,6 +127,15 @@ function assertEntryIdentity(pageKey: string, revisionId: string): void {
   }
 }
 
+function assertPageKey(pageKey: string): void {
+  if (!isPageKey(pageKey)) {
+    throw new SyncQueueError(
+      'invalid-entry',
+      'A valid page key is required to read sync queue state.',
+    );
+  }
+}
+
 export class ChromeLocalSyncQueue implements SyncQueue {
   readonly #clock: () => Date;
   readonly #random: () => number;
@@ -240,6 +249,14 @@ export class ChromeLocalSyncQueue implements SyncQueue {
 
       return entry;
     });
+  }
+
+  async get(pageKey: string): Promise<SyncQueueEntry | undefined> {
+    assertPageKey(pageKey);
+
+    return await this.#run(() =>
+      this.#loadOne(getSyncQueueStorageKey(pageKey), 'put'),
+    );
   }
 
   count(): Promise<number> {

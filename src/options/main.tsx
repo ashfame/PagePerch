@@ -5,8 +5,11 @@ import { createByosClient } from '../background/byosClient';
 import { SyncRuntimeMessagePort } from '../background/syncRuntimeMessages';
 import { ChromeLocalIdentityMigrationPersistence } from '../repositories/chromeLocalIdentityMigrationPersistence';
 import { ChromeLocalSettingsRepository } from '../repositories/chromeLocalSettingsRepository';
+import { ChromeLocalSyncQueue } from '../repositories/chromeLocalSyncQueue';
+import { ChromeSyncVisibilityChanges } from '../repositories/chromeSyncVisibilityChanges';
 import { IdentityMigrationExecutor } from '../services/identityMigrationExecutor';
 import { DefaultPageIdentityService } from '../services/pageIdentity';
+import { DefaultPendingSyncCount } from '../sync/syncVisibility';
 import { OptionsApp } from './App';
 
 const rootElement = document.querySelector('#root');
@@ -20,6 +23,13 @@ const pageIdentity = new DefaultPageIdentityService();
 const byosClient = createByosClient();
 const syncMessages = new SyncRuntimeMessagePort();
 const clock = () => new Date();
+const pendingSyncCount = new DefaultPendingSyncCount({
+  changes: new ChromeSyncVisibilityChanges(),
+  queue: new ChromeLocalSyncQueue({
+    clock,
+    random: Math.random,
+  }),
+});
 const migration = new IdentityMigrationExecutor({
   persistence: new ChromeLocalIdentityMigrationPersistence(),
   pageIdentityService: pageIdentity,
@@ -39,6 +49,7 @@ createRoot(rootElement).render(
           connection: byosClient.coordinator,
         },
         migration,
+        pendingSyncCount,
         settings,
         syncMessages,
       }}

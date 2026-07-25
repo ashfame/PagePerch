@@ -13,6 +13,7 @@ export interface SyncQueueEntry {
 export interface SyncQueue {
   enqueue(pageKey: string, revisionId: string): Promise<SyncQueueEntry>;
   complete(pageKey: string, revisionId: string): Promise<boolean>;
+  get(pageKey: string): Promise<SyncQueueEntry | undefined>;
   /**
    * Records a failed attempt only when the queued revision still matches.
    * A missing entry is created so reconciliation failures remain durable.

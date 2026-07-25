@@ -17,6 +17,11 @@ import {
 import { enqueueStorageOperation } from '../repositories/chromeStorage';
 import { ByosError } from '../services/byosError';
 import { IDENTITY_MIGRATION_JOURNAL_STORAGE_KEY } from '../services/identityMigrationPersistence';
+import type {
+  PendingSyncCount,
+  PendingSyncCountConnection,
+  PendingSyncCountState,
+} from '../sync/syncVisibility';
 import { InMemoryChromeStorage } from '../../test/inMemoryChromeStorage';
 import { OptionsApp, type OptionsAppDependencies } from './App';
 
@@ -48,6 +53,24 @@ function cloneSettings(value: SettingsRecordV1): SettingsRecordV1 {
   return structuredClone(value);
 }
 
+class FakePendingSyncCount implements PendingSyncCount {
+  readonly disconnect = vi.fn();
+  readonly connect = vi.fn(
+    (
+      emitState: (state: PendingSyncCountState) => void,
+    ): PendingSyncCountConnection => {
+      this.emitState = emitState;
+
+      return { disconnect: this.disconnect };
+    },
+  );
+  private emitState: ((state: PendingSyncCountState) => void) | undefined;
+
+  emit(state: PendingSyncCountState): void {
+    this.emitState?.(state);
+  }
+}
+
 interface Harness {
   current(): SettingsRecordV1;
   readonly dependencies: OptionsAppDependencies;
@@ -55,6 +78,7 @@ interface Harness {
   readonly disconnect: ReturnType<typeof vi.fn<() => Promise<void>>>;
   readonly get: ReturnType<typeof vi.fn<() => Promise<SettingsRecordV1>>>;
   readonly invalidateCredentials: ReturnType<typeof vi.fn<() => Promise<void>>>;
+  readonly pendingSyncCount: FakePendingSyncCount;
   readonly request: ReturnType<typeof vi.fn>;
   readonly updateEditorMode: ReturnType<
     typeof vi.fn<(editorMode: EditorMode) => Promise<SettingsRecordV1>>
@@ -117,6 +141,7 @@ function harness(
   );
   const invalidateCredentials = vi.fn(() => Promise.resolve());
   const clientId = options.clientId ?? 'client-public';
+  const pendingSyncCount = new FakePendingSyncCount();
 
   return {
     clock,
@@ -133,12 +158,14 @@ function harness(
         connection: { connect, disconnect },
       },
       migration: { start },
+      pendingSyncCount,
       settings: { get, updateEditorMode },
       syncMessages: { invalidateCredentials, request },
     },
     disconnect,
     get,
     invalidateCredentials,
+    pendingSyncCount,
     request,
     updateEditorMode,
     start,
@@ -365,6 +392,36 @@ describe('OptionsApp', () => {
       screen.queryByText(/sync engine is not yet configured/iu),
     ).toBeNull();
     expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
+  });
+
+  it('updates the passive aggregate pending-page count without sync controls', async () => {
+    const testHarness = harness();
+    await renderReady(testHarness);
+
+    expect(screen.getByText('Pages waiting to sync')).toBeInTheDocument();
+    expect(screen.getByText('Checking…')).toBeInTheDocument();
+
+    act(() => {
+      testHarness.pendingSyncCount.emit({ status: 'ready', count: 2 });
+    });
+    expect(screen.getByText('2 pages')).toBeInTheDocument();
+
+    act(() => {
+      testHarness.pendingSyncCount.emit({ status: 'ready', count: 1 });
+    });
+    expect(screen.getByText('1 page')).toBeInTheDocument();
+
+    act(() => {
+      testHarness.pendingSyncCount.emit({ status: 'error' });
+    });
+    expect(screen.getByText('Unavailable')).toBeInTheDocument();
+
+    act(() => {
+      testHarness.pendingSyncCount.emit({ status: 'ready', count: 0 });
+    });
+    expect(screen.getByText('0 pages')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /sync now/iu })).toBeNull();
+    expect(screen.queryByRole('button', { name: /retry sync/iu })).toBeNull();
   });
 
   it('disables connection with exact missing-client guidance and no client calls', async () => {

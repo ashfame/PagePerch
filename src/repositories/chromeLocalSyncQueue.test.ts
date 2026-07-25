@@ -183,6 +183,74 @@ describe('ChromeLocalSyncQueue', () => {
     await expect(test.queue.count()).resolves.toBe(2);
   });
 
+  it('reads one exact page entry without scanning unrelated storage', async () => {
+    const unrelated = { 'another-extension:data': { private: true } };
+    const storage = new InMemoryChromeStorage({
+      ...unrelated,
+      [getSyncQueueStorageKey(PAGE_KEY_A)]: stored(PAGE_KEY_A, 'revision-a'),
+      [getSyncQueueStorageKey(PAGE_KEY_B)]: stored(PAGE_KEY_B, 'revision-b'),
+    });
+    const test = harness(storage);
+
+    const entry = await test.queue.get(PAGE_KEY_A);
+
+    expect(entry).toEqual({
+      pageKey: PAGE_KEY_A,
+      revisionId: 'revision-a',
+      attemptCount: 0,
+      nextAttemptAt: NOW,
+    });
+    expect(Object.isFrozen(entry)).toBe(true);
+    expect(storage.getCalls).toEqual([getSyncQueueStorageKey(PAGE_KEY_A)]);
+    expect(storage.snapshot()).toMatchObject(unrelated);
+    await expect(test.queue.get(`${'C'.repeat(42)}g`)).resolves.toBeUndefined();
+  });
+
+  it.each([
+    [
+      'malformed envelope',
+      getSyncQueueStorageKey(PAGE_KEY_A),
+      { schemaVersion: 1, entry: { partial: true } },
+      'stored-malformed',
+    ],
+    [
+      'future envelope',
+      getSyncQueueStorageKey(PAGE_KEY_A),
+      { schemaVersion: 2, entry: { future: true } },
+      'stored-future-schema',
+    ],
+    [
+      'mismatched page key',
+      getSyncQueueStorageKey(PAGE_KEY_A),
+      stored(PAGE_KEY_B),
+      'stored-malformed',
+    ],
+  ])(
+    'rejects an exact-page %s without mutation',
+    async (_label, key, value, code) => {
+      const storage = new InMemoryChromeStorage({ [key]: value });
+      const test = harness(storage);
+
+      await expect(test.queue.get(PAGE_KEY_A)).rejects.toMatchObject({
+        name: 'SyncQueueError',
+        code,
+        storageKey: key,
+      });
+      expect(storage.snapshot()[key]).toEqual(value);
+      expect(storage.setCalls).toEqual([]);
+      expect(storage.removeCalls).toEqual([]);
+    },
+  );
+
+  it('rejects an invalid exact-page lookup before storage access', async () => {
+    const test = harness();
+
+    await expect(test.queue.get('not-a-page-key')).rejects.toMatchObject({
+      code: 'invalid-entry',
+    });
+    expect(test.storage.getCalls).toEqual([]);
+  });
+
   it('caps both attempt metadata and exponential retry delay', async () => {
     const test = harness();
     let latest;

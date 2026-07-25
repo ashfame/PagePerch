@@ -110,7 +110,7 @@
 - Context: Local saves define product success and must remain durable through suspension and remote failure, while an upload or download already in flight must not clear or overwrite a newer user save. Revision IDs alone are not an atomic equality guarantee because the repository accepts any valid externally supplied record.
 - Options considered: Persist full record snapshots in the queue; rely on last writer wins; compare only revision IDs; use minimal intent plus queue revision CAS and local complete-record CAS under the shared storage lock.
 - Consequences: Repeated saves coalesce without duplicating note content, stale completion cannot remove newer intent, a remote hydration cannot overwrite even a same-revision divergent concurrent save, queue-only orphans can be removed safely, and worker restart reconstructs bounded retry state. A failed queue write does not invalidate an already durable local save; later full reconciliation repairs missing intent.
-- Follow-up tasks: Surface passive pending/error status in PP-007C2 and retain race tests whenever note or queue persistence changes.
+- Follow-up tasks: Retain passive-status and post-save evidence race tests whenever note or queue persistence changes.
 
 ## 2026-07-25 — Use Automatic Sync with the Durable Queue as the Per-Page Flag
 
@@ -118,4 +118,4 @@
 - Context: The user wants page visits and ordinary extension lifecycle events to recover pending work without making synchronization a manual workflow. A second boolean inside the note record would duplicate queue state and could drift from the revision it describes.
 - Options considered: Add an `isSynced` boolean to every note; expose manual synchronization controls; keep revision-specific durable queue intent and automatic background reconciliation.
 - Consequences: Local save success remains independent of BYOS, an expired connected token still leaves the exact revision pending, deliberate local-only/disconnected editing creates no unnecessary queue, and reconnection performs a full reconciliation. The MV3 service worker owns temporary credentials, alarms, serialization, connection generations, and redacted outcomes while Chrome may suspend it at any time. Disconnect invalidates worker credentials before clearing local connection state, and whole-run failures advance due revisions through bounded CAS backoff.
-- Follow-up tasks: Add passive per-page and aggregate queue visibility, packaged lifecycle coverage, and manual BYOS verification with an approved client.
+- Follow-up tasks: Add packaged lifecycle coverage and manual BYOS verification with an approved client.

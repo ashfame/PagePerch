@@ -239,6 +239,21 @@ button:active {
   margin-top: 0;
 }
 
+.sync-visibility-message {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.sync-visibility-message > * {
+  margin: 0;
+}
+
+.sync-status-detail {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
 .editor-alert,
 .note-action-error {
   margin-top: 0.875rem !important;
