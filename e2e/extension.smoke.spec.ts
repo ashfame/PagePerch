@@ -15,6 +15,10 @@ import {
 } from '@playwright/test';
 
 const distributionDirectory = resolve(import.meta.dirname, '../dist');
+const deprecatedUseSettingMessage =
+  'wp.blockEditor.useSetting is deprecated since version 6.5. Please use wp.blockEditor.useSettings instead.';
+const deprecatedRecursionProviderMessage =
+  'wp.blockEditor.__experimentalRecursionProvider is deprecated since version 6.5. Please use wp.blockEditor.RecursionProvider instead.';
 
 interface ExtensionSession {
   context: BrowserContext;
@@ -511,11 +515,17 @@ test('loads the unpacked module worker and both branded React surfaces', async (
     await session.page.goto(
       `chrome-extension://${session.extensionId}/options.html`,
     );
+    const installedVersion = await session.serviceWorker.evaluate(
+      () => chrome.runtime.getManifest().version,
+    );
     await expect(
       session.page.getByRole('heading', {
         level: 1,
         name: 'PagePerch settings',
       }),
+    ).toBeVisible();
+    await expect(
+      session.page.getByText(`Version ${installedVersion}`, { exact: true }),
     ).toBeVisible();
     await expect(
       session.page.getByText(
@@ -776,6 +786,110 @@ test('opens the packaged editor for a supported HTTP tab without fatal runtime e
     await expect
       .poll(() => ({ consoleErrors, pageErrors }))
       .toEqual({ consoleErrors: [], pageErrors: [] });
+  } finally {
+    await closeExtension(session);
+  }
+});
+
+test('lets a pointer user click multiple blank canvas spots, type, persist, and reload', async () => {
+  test.setTimeout(45_000);
+  const session = await launchExtension();
+  const fixtureUrl = 'https://pageperch.test/basic-canvas-typing';
+  const fixtureTitle = 'PagePerch basic canvas typing fixture';
+  const noteProbe = storedNote(fixtureUrl, fixtureTitle, '');
+  const deprecationMessages: string[] = [];
+
+  try {
+    await routeFixture(session.context, fixtureUrl, fixtureTitle);
+    await session.page.goto(fixtureUrl);
+
+    const panelPage = await session.context.newPage();
+    await panelPage.setViewportSize({ width: 280, height: 720 });
+    panelPage.on('console', (message) => {
+      if (
+        message.text().includes(deprecatedUseSettingMessage) ||
+        message.text().includes(deprecatedRecursionProviderMessage)
+      ) {
+        deprecationMessages.push(message.text());
+      }
+    });
+    await panelPage.goto(
+      `chrome-extension://${session.extensionId}/side-panel.html`,
+    );
+    await activateTabForUrl(session.serviceWorker, fixtureUrl);
+
+    const editable = await expectSimplifiedEditorReady(
+      panelPage,
+      fixtureUrl,
+      fixtureTitle,
+    );
+    const canvas = panelPage.locator('.page-note-editor__canvas');
+    await expect(canvas).toBeVisible();
+    const canvasBounds = await canvas.boundingBox();
+
+    if (canvasBounds === null) {
+      throw new Error('The basic writing canvas has no visible bounds.');
+    }
+
+    const spots = [
+      {
+        name: 'upper-right',
+        position: {
+          x: Math.floor(canvasBounds.width * 0.75),
+          y: Math.floor(canvasBounds.height * 0.25),
+        },
+        token: 'Upper canvas ',
+      },
+      {
+        name: 'middle-left',
+        position: {
+          x: Math.floor(canvasBounds.width * 0.25),
+          y: Math.floor(canvasBounds.height * 0.5),
+        },
+        token: 'Middle canvas ',
+      },
+      {
+        name: 'lower-right',
+        position: {
+          x: Math.floor(canvasBounds.width * 0.75),
+          y: Math.floor(canvasBounds.height * 0.8),
+        },
+        token: 'Lower canvas',
+      },
+    ] as const;
+    let expectedText = '';
+
+    for (const spot of spots) {
+      await canvas.click({ position: spot.position });
+      expect(
+        await editable.evaluate(
+          (element) => element === document.activeElement,
+        ),
+        `${spot.name} blank-canvas click should focus the editable`,
+      ).toBe(true);
+      await panelPage.keyboard.type(spot.token);
+      expectedText += spot.token;
+      await expect(editable).toContainText(expectedText);
+    }
+
+    await expect
+      .poll(async () => {
+        const stored = (await readStoredNote(
+          session.serviceWorker,
+          noteProbe,
+        )) as Partial<StoredNote> | undefined;
+        return stored?.contentHtml;
+      })
+      .toContain(expectedText);
+
+    await panelPage.reload();
+    await expectSimplifiedEditorReady(panelPage, fixtureUrl, fixtureTitle);
+    await expect(
+      panelPage.getByText(expectedText, { exact: true }),
+    ).toBeVisible({
+      timeout: 15_000,
+    });
+    expect(deprecationMessages).toEqual([]);
   } finally {
     await closeExtension(session);
   }

@@ -10,6 +10,11 @@
   margin-bottom: 1rem;
 }
 
+.brand-header .options-version {
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
+}
+
 .identity-surface,
 .options-notice {
   grid-column: 1 / -1;

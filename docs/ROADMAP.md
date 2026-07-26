@@ -59,3 +59,15 @@ Replace the rejected superficial style and height assertions with real Gutenberg
 Status: completed.
 
 Bind the accepted editor correction to version `0.1.3`, run the complete release gate, produce a deterministic audited ZIP and checksum, and publish the standing annotated minor-update tag without rewriting the rejected `v0.1.2` release.
+
+## M10 — Correct Manual Editor Interaction
+
+Status: completed.
+
+Replace the inadequate keyboard-focused typing evidence with a dedicated packaged-browser click-to-type persistence contract, remove the pinned isolated editor's two WordPress 6.5 deprecation paths through a bounded build compatibility correction, and display the authoritative installed extension version on the settings page.
+
+## M11 — 0.1.4 Corrective Minor Update
+
+Status: in progress.
+
+Bind the independently accepted interaction correction to version `0.1.4`, run the complete release and deterministic packaging gates, and publish the standing annotated minor-update tag without rewriting the rejected `v0.1.3` release.

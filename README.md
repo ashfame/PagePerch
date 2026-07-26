@@ -11,6 +11,7 @@ PagePerch is a private, offline-first Chrome side-panel extension for keeping on
 - Converts pasted semantic HTML into supported Gutenberg blocks while retaining safe headings, lists, quotes, code, emphasis, and links.
 - Can show an opt-in recent-note index on an exact-origin root page such as `https://example.com/`.
 - Offers text-focused blocks or a paragraphs-only editor mode.
+- Shows the installed extension version on the settings page.
 - Follows the browser or operating-system light/dark preference automatically.
 - Ignores common tracking parameters when deciding whether two URLs identify the same page.
 - Lets users add exact query-parameter exclusions for one exact origin.
@@ -115,6 +116,8 @@ Open PagePerch settings from the side panel or Chrome's extension menu to choose
 - **Paragraphs only** for paragraph blocks, inline formatting, links, undo, and redo.
 - **Show recent notes on root pages** to display other saved notes from the same exact origin; this is off by default.
 
+The settings header shows the exact installed extension version reported by Chrome.
+
 Media, embeds, reusable blocks, remote WordPress APIs, code editing, fullscreen, preview, and unrelated Gutenberg panels are disabled.
 
 When **Show recent notes on root pages** is enabled, an exact-origin root page shows its editable note followed by the most recently saved non-root notes for that exact origin. Selecting an entry opens its canonical HTTP or HTTPS URL in a new tab. When the setting is off, PagePerch does not connect to or query the recent-note index.
@@ -193,7 +196,7 @@ npm run test:e2e
 npm run release:package
 ```
 
-Set `PAGEPERCH_HEADFUL=1` when running `npm run test:e2e` to display Chromium. The Playwright suite exercises the packaged worker and options page, exact narrow and wide editor gutters, computed light/dark writing styles, strict short-note viewport fill with visible status, a keyboard-only blank Gutenberg edit with undo/redo, content-driven growth, genuine trusted HTML copy/paste with partial-selection and nested-list coverage, safe persistence across panel reload and browser restart, and the default-off then opted-in root recent-note index. The native toolbar-to-side-panel host click remains an explicit manual check because Playwright cannot operate Chrome's browser toolbar.
+Set `PAGEPERCH_HEADFUL=1` when running `npm run test:e2e` to display Chromium. The Playwright suite exercises the packaged worker and options page with its runtime version, exact narrow and wide editor gutters, computed light/dark writing styles, strict short-note viewport fill with visible status, three distinct blank-canvas click-to-focus-before-type positions with persistence/reload, keyboard undo/redo, content-driven growth, absence of the two corrected WordPress deprecations, genuine trusted HTML copy/paste with partial-selection and nested-list coverage, safe persistence across panel reload and browser restart, and the default-off then opted-in root recent-note index. The native toolbar-to-side-panel host click remains an explicit manual check because Playwright cannot operate Chrome's browser toolbar.
 
 Automated tests never use live BYOS credentials. OAuth, temporary credentials, SigV4/path-style S3 transport, reconciliation, failures, expiry, and retries use controlled mocks; live consent and remote storage remain manual acceptance checks.
 

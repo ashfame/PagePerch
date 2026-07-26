@@ -174,6 +174,7 @@ function harness(
         updateShowRecentNotesOnOrigin,
       },
       syncMessages: { invalidateCredentials, request },
+      version: '9.8.7-test',
     },
     disconnect,
     get,
@@ -220,6 +221,7 @@ describe('OptionsApp', () => {
       'Reading local settings',
     );
     expect(screen.getByRole('main')).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByText('Version 9.8.7-test')).toBeVisible();
   });
 
   it('shows a sanitized load error and retries successfully', async () => {
@@ -440,6 +442,7 @@ describe('OptionsApp', () => {
           },
           migration: { start },
           settings: repository,
+          version: '9.8.7-test',
         }}
       />,
     );

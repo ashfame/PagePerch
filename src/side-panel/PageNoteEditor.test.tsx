@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 import { StrictMode, type ReactNode } from 'react';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { initializeEditor as initializeEditorType } from '@automattic/isolated-block-editor';
 import apiFetch from '@wordpress/api-fetch';
 // @ts-expect-error WordPress ships declarations without exposing them in its package metadata.
@@ -1395,6 +1395,68 @@ describe('PageNoteEditor lifecycle and save contract', () => {
     expect(region).toHaveAttribute('aria-busy', 'false');
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(capturedEditor().className).toBe('page-note-editor__isolated');
+  });
+
+  it('focuses the final editable at its end when blank canvas space is clicked', () => {
+    const { container } = render(<PageNoteEditor {...createProps()} />);
+    const canvas = container.querySelector('.page-note-editor__canvas');
+
+    if (!(canvas instanceof HTMLDivElement)) {
+      throw new Error('Expected the PagePerch editor canvas.');
+    }
+
+    const firstEditable = document.createElement('p');
+    firstEditable.setAttribute('contenteditable', 'true');
+    firstEditable.textContent = 'First block';
+    const finalEditable = document.createElement('p');
+    finalEditable.setAttribute('contenteditable', 'true');
+    finalEditable.textContent = 'Final block';
+    canvas.append(firstEditable, finalEditable);
+
+    fireEvent.click(canvas, { button: 0 });
+
+    expect(finalEditable).toHaveFocus();
+    const selection = window.getSelection();
+    expect(selection).not.toBeNull();
+    expect(selection?.rangeCount).toBe(1);
+    const range = selection?.getRangeAt(0);
+    expect(range?.collapsed).toBe(true);
+    expect(range?.startContainer).toBe(finalEditable);
+    expect(range?.startOffset).toBe(finalEditable.childNodes.length);
+  });
+
+  it('does not steal modified or interactive editor clicks', () => {
+    const { container } = render(<PageNoteEditor {...createProps()} />);
+    const canvas = container.querySelector('.page-note-editor__canvas');
+
+    if (!(canvas instanceof HTMLDivElement)) {
+      throw new Error('Expected the PagePerch editor canvas.');
+    }
+
+    const firstEditable = document.createElement('p');
+    firstEditable.setAttribute('contenteditable', 'true');
+    firstEditable.tabIndex = 0;
+    const finalEditable = document.createElement('p');
+    finalEditable.setAttribute('contenteditable', 'true');
+    finalEditable.tabIndex = 0;
+    const link = document.createElement('a');
+    link.href = 'https://example.test/';
+    link.textContent = 'Interactive link';
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+    });
+    canvas.append(firstEditable, finalEditable, link);
+
+    firstEditable.focus();
+    fireEvent.click(canvas, { button: 0, ctrlKey: true });
+    expect(firstEditable).toHaveFocus();
+
+    fireEvent.click(firstEditable, { button: 0 });
+    expect(firstEditable).toHaveFocus();
+
+    link.focus();
+    fireEvent.click(link, { button: 0 });
+    expect(link).toHaveFocus();
   });
 });
 

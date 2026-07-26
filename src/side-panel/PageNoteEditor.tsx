@@ -5,6 +5,7 @@ import {
   useState,
   type RefObject,
   type ComponentType,
+  type MouseEvent as ReactMouseEvent,
 } from 'react';
 import IsolatedBlockEditor, {
   EditorLoaded,
@@ -133,6 +134,45 @@ const HTML_COMMENT_PATTERN = /<!--[\s\S]*?-->/gu;
 const HTML_TAG_PATTERN = /<\/?([a-z][a-z0-9-]*)\b[^>]*>/giu;
 const BLOCK_BREAK_PATTERN =
   /<\/?(?:address|article|aside|blockquote|br|div|figcaption|figure|h[1-6]|header|li|main|ol|p|pre|section|table|td|th|tr|ul)\b[^>]*>/giu;
+const INTERACTIVE_EDITOR_TARGET_SELECTOR = [
+  '[contenteditable="true"]',
+  'a[href]',
+  'button',
+  'input',
+  'select',
+  'textarea',
+  '[role="button"]',
+  '[role="checkbox"]',
+  '[role="link"]',
+  '[role="menuitem"]',
+  '[role="option"]',
+  '[role="radio"]',
+  '[role="switch"]',
+  '.block-editor-block-contextual-toolbar',
+  '.block-editor-block-list__block',
+  '.block-editor-block-popover',
+  '.block-editor-block-toolbar',
+  '.block-editor-button-block-appender',
+  '.block-editor-inserter',
+  '.block-editor-link-control',
+  '.components-popover',
+].join(',');
+const BLANK_EDITOR_SPACE_SELECTOR = [
+  '.page-note-editor__canvas',
+  '.page-note-editor__isolated',
+  '.iso-editor',
+  '.edit-post-layout',
+  '.interface-interface-skeleton',
+  '.interface-interface-skeleton__body',
+  '.interface-interface-skeleton__editor',
+  '.interface-interface-skeleton__content',
+  '.components-navigate-regions',
+  '.edit-post-visual-editor',
+  '.edit-post-visual-editor__content-area',
+  '.editor-styles-wrapper',
+  '.block-editor-writing-flow',
+  '.block-editor-block-list__layout.is-root-container',
+].join(',');
 
 class UnsafeStoredContentError extends Error {
   constructor(message: string) {
@@ -1093,6 +1133,50 @@ function PageNoteEditorStyleInjector() {
   return <GutenbergEditorStyles styles={PAGE_NOTE_EDITOR_STYLES} />;
 }
 
+function focusLastEditableBlock(
+  editorRoot: HTMLElement,
+  event: ReactMouseEvent<HTMLDivElement>,
+): void {
+  if (
+    event.button !== 0 ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey
+  ) {
+    return;
+  }
+
+  const target = event.target;
+  if (
+    !(target instanceof Element) ||
+    !target.matches(BLANK_EDITOR_SPACE_SELECTOR) ||
+    target.closest(INTERACTIVE_EDITOR_TARGET_SELECTOR) !== null
+  ) {
+    return;
+  }
+
+  const editables = editorRoot.querySelectorAll<HTMLElement>(
+    '[contenteditable="true"]',
+  );
+  const editable = editables.item(editables.length - 1);
+  if (editable === null) {
+    return;
+  }
+
+  editable.focus({ preventScroll: true });
+  const selection = editable.ownerDocument.defaultView?.getSelection();
+  if (selection === undefined || selection === null) {
+    return;
+  }
+
+  const range = editable.ownerDocument.createRange();
+  range.selectNodeContents(editable);
+  range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
 function PageNoteEditorRuntime({
   initialContentHtml,
   editorMode,
@@ -1275,6 +1359,15 @@ function PageNoteEditorRuntime({
     },
     [editorMode, forwardMutation, reportError],
   );
+  const handleCanvasClick = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      const editorRoot = editorRootRef.current;
+      if (editorRoot !== null) {
+        focusLastEditableBlock(editorRoot, event);
+      }
+    },
+    [],
+  );
 
   return (
     <section
@@ -1290,7 +1383,7 @@ function PageNoteEditorRuntime({
         </p>
       ) : null}
       {fatalLoadError === null ? (
-        <div className="page-note-editor__canvas">
+        <div className="page-note-editor__canvas" onClick={handleCanvasClick}>
           <IsolatedBlockEditor
             className="page-note-editor__isolated"
             settings={buildPageNoteEditorCapabilities(editorMode)}

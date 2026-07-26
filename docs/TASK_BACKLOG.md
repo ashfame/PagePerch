@@ -186,3 +186,25 @@
 - Suggested files: version metadata, README, release evidence, orchestration state
 - Test expectations: Complete `npm run check`, repeated deterministic `npm run release:package`, exact archive/checksum cardinality and names, strict checksum verification, ZIP integrity, embedded manifest/package version inspection, clean source/tag verification, and green branch/tag CI
 - Notes: Package, both lockfile version fields, source manifest, and archived manifest agree at `0.1.3`. The complete 963-test/build/audit/browser gate passes with six Chromium flows and one intentional native-toolbar skip. Two packaging runs produced the identical 5,062,768-byte archive with SHA-256 `589ec6ca690ac3cfd87515df9bec29933015dfc78ffc2175e23f6ae2650f898c`; strict checksum verification, ZIP integrity, exact two-file artifact cardinality, and embedded-manifest inspection pass. The release source is committed, annotated as `PagePerch 0.1.3 — Minor update`, and pushed without rewriting `v0.1.2`.
+
+## PP-016 — Restore Click-to-Type Editing and Remove Gutenberg Deprecations
+
+- Status: completed
+- Priority: P0
+- Dependencies: PP-015 manual rejection
+- Spec or plan references: User manual feedback after `v0.1.3`; Plan: Side Panel and Settings; WordPress 6.5 `useSettings` and `RecursionProvider` APIs
+- Acceptance criteria: A dedicated packaged-browser test clicks the visibly empty editor canvas, types ordinary text, observes it immediately, proves local persistence and reload, and fails against the rejected implementation before the fix; production emits neither the `wp.blockEditor.useSetting` nor `wp.blockEditor.__experimentalRecursionProvider` deprecation; keyboard focus, rich paste, undo/redo, long growth, and full-height behavior remain intact; the settings page visibly shows the exact installed Chrome manifest version.
+- Suggested files: `e2e/extension.smoke.spec.ts`, `src/side-panel/PageNoteEditor.tsx`, `src/build/mv3Compatibility.ts`, focused build/editor tests, `src/options/App.tsx`, `src/options/main.tsx`, options tests and styles
+- Test expectations: Demonstrated pre-fix click-to-type failure, exact compatibility-transform tests with drift rejection, dedicated trusted packaged-browser type/persist/reload and deprecation-console assertions, options component and packaged-version assertions, complete `npm run check`, and green branch/tag CI
+- Notes: Independently approved with no blockers. Before the production fix, the dedicated packaged test failed its first upper-right canvas click because the editable did not become `document.activeElement`; after the fix, upper-right, middle-left, and lower-right canvas clicks each focus before distinct typing, and the combined note persists and reloads. The exact build-module compatibility transform changes `useSetting` to tuple-returning `useSettings` and the experimental recursion alias to stable `RecursionProvider`, rejects missing or duplicate pinned patterns, composes with the existing Lodash rewrite, leaves `node_modules` untouched, and produces neither exact warning in packaged Chromium. Settings displays the runtime manifest version. The complete gate passes with 971 tests at 91.42% statement and 87.75% branch coverage, seven passing Chromium flows, and one intentional toolbar skip.
+
+## PP-017 — Cut the 0.1.4 Corrective Minor Update
+
+- Status: in progress
+- Priority: P0
+- Dependencies: PP-016
+- Spec or plan references: User manual feedback after `v0.1.3`; standing minor-update tag convention
+- Acceptance criteria: Package, lockfile, source manifest, archived manifest, settings display, and README commands agree at `0.1.4`; the complete release gate passes; one deterministic `pageperch-0.1.4.zip` plus matching strict checksum is produced twice identically; the source commit is annotated with `v0.1.4` using the standing minor-update message and both commit and tag are pushed without rewriting `v0.1.3`.
+- Suggested files: version metadata, README, release evidence, orchestration state
+- Test expectations: Complete `npm run check`, repeated deterministic `npm run release:package`, exact archive/checksum cardinality and names, strict checksum verification, ZIP integrity, embedded manifest/source/settings version inspection, clean source/tag verification, and green implementation/branch/tag CI
+- Notes: Main orchestrator owns the implementation commit before release changes, then version binding, packaging, release evidence, commit, tag, push, and final manual-test handoff.

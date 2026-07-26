@@ -52,6 +52,7 @@ createRoot(rootElement).render(
         pendingSyncCount,
         settings,
         syncMessages,
+        version: chrome.runtime.getManifest().version,
       }}
     />
   </StrictMode>,

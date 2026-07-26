@@ -49,6 +49,7 @@ export interface OptionsAppDependencies {
   readonly byos: OptionsByosDependencies;
   readonly migration: MigrationPort;
   readonly settings: SettingsPort;
+  readonly version: string;
   readonly pendingSyncCount?: PendingSyncCount;
   readonly syncMessages?: Pick<
     SyncRuntimeMessagePort,
@@ -587,6 +588,7 @@ export function OptionsApp({ dependencies }: OptionsAppProps) {
         <div>
           <h1>PagePerch settings</h1>
           <p>Private notes, configured with clear boundaries.</p>
+          <p className="options-version">Version {dependencies.version}</p>
         </div>
       </header>
 
