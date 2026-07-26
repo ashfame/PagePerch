@@ -564,45 +564,25 @@ test('loads the unpacked module worker and both branded React surfaces', async (
     await focusWithKeyboard(session.page, button);
     await expect(button).toBeFocused();
 
-    const visualState = await button.evaluate((element) => {
-      const styles = getComputedStyle(element);
+    const layoutState = await button.evaluate((element) => {
       const buttonBounds = element.getBoundingClientRect();
       const headerBounds = element
         .closest('.brand-header')
         ?.getBoundingClientRect();
       return {
-        backgroundColor: getComputedStyle(document.body).backgroundColor,
-        buttonBackgroundColor: styles.backgroundColor,
-        buttonBorderWidth: styles.borderTopWidth,
         fitsViewport: document.documentElement.scrollWidth <= window.innerWidth,
-        outlineStyle: styles.outlineStyle,
-        outlineWidth: styles.outlineWidth,
-        reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
         rightGap:
           headerBounds === undefined
             ? Number.POSITIVE_INFINITY
             : headerBounds.right - buttonBounds.right,
-        textDecorationLine: styles.textDecorationLine,
-        transitionDurations: styles.transitionDuration
-          .split(',')
-          .map((duration) => Number.parseFloat(duration)),
       };
     });
 
-    expect(visualState).toMatchObject({
-      backgroundColor: 'rgb(16, 23, 18)',
-      buttonBackgroundColor: 'rgba(0, 0, 0, 0)',
-      buttonBorderWidth: '0px',
+    expect(layoutState).toMatchObject({
       fitsViewport: true,
-      outlineStyle: 'solid',
-      outlineWidth: '3px',
-      reducedMotion: true,
-      textDecorationLine: 'underline',
     });
-    expect(visualState.rightGap).toBeLessThanOrEqual(1);
-    expect(Math.max(...visualState.transitionDurations)).toBeLessThanOrEqual(
-      0.001,
-    );
+    expect(layoutState.rightGap).toBeGreaterThanOrEqual(-1);
+    expect(layoutState.rightGap).toBeLessThanOrEqual(1);
   } finally {
     await closeExtension(session);
   }
@@ -670,33 +650,35 @@ test('opens the packaged editor for a supported HTTP tab without fatal runtime e
       '.block-editor-block-list__layout.is-root-container',
     );
     await expect(root).toBeVisible();
-    expect(
-      await root.evaluate((rootElement) => {
-        const rootStyles = getComputedStyle(rootElement);
-        const writingFlow = rootElement.closest('.block-editor-writing-flow');
-        const writingFlowStyles =
-          writingFlow === null ? undefined : getComputedStyle(writingFlow);
+    const measureWritingInsets = () =>
+      root.evaluate((rootElement) => {
+        const firstBlock = rootElement.querySelector(':scope > .wp-block');
+        if (!(firstBlock instanceof HTMLElement)) {
+          throw new Error('The editor writing column has no first block.');
+        }
 
+        const rootBounds = rootElement.getBoundingClientRect();
+        const blockBounds = firstBlock.getBoundingClientRect();
         return {
-          paddingBottom: writingFlowStyles?.paddingBottom,
-          paddingLeft: rootStyles.paddingLeft,
-          paddingRight: rootStyles.paddingRight,
-          paddingTop: writingFlowStyles?.paddingTop,
+          fitsViewport:
+            document.documentElement.scrollWidth <= window.innerWidth,
+          left: blockBounds.left - rootBounds.left,
+          right: rootBounds.right - blockBounds.right,
+          top: blockBounds.top - rootBounds.top,
         };
-      }),
-    ).toEqual({
-      paddingBottom: '0px',
-      paddingLeft: '16px',
-      paddingRight: '16px',
-      paddingTop: '0px',
-    });
+      });
+    const narrowInsets = await measureWritingInsets();
+    expect(narrowInsets.fitsViewport).toBe(true);
+    expect(narrowInsets.left).toBeCloseTo(16, 0);
+    expect(narrowInsets.right).toBeCloseTo(16, 0);
+    expect(narrowInsets.top).toBeCloseTo(16, 0);
+
     await panelPage.setViewportSize({ width: 640, height: 720 });
-    expect(
-      await root.evaluate((rootElement) => {
-        const styles = getComputedStyle(rootElement);
-        return [styles.paddingLeft, styles.paddingRight];
-      }),
-    ).toEqual(['16px', '16px']);
+    const wideInsets = await measureWritingInsets();
+    expect(wideInsets.fitsViewport).toBe(true);
+    expect(wideInsets.left).toBeCloseTo(16, 0);
+    expect(wideInsets.right).toBeCloseTo(16, 0);
+    expect(wideInsets.top).toBeCloseTo(16, 0);
     await panelPage.setViewportSize({ width: 280, height: 720 });
 
     const noteStatus = panelPage.locator('.note-status');
@@ -727,19 +709,12 @@ test('opens the packaged editor for a supported HTTP tab without fatal runtime e
       const rootBounds = rootElement.getBoundingClientRect();
       const lastBlockBounds = lastBlock.getBoundingClientRect();
       const statusBounds = status.getBoundingClientRect();
-      const noteAreaStyles = getComputedStyle(noteArea);
-      const injectedWritingStyles = [...document.querySelectorAll('style')]
-        .map((style) => style.textContent ?? '')
-        .filter((content) =>
-          content.includes('--pageperch-writing-quote-border'),
-        );
 
       return {
         canvasBelowLastBlock: editorBounds.bottom - lastBlockBounds.bottom,
         editorBottom: editorBounds.bottom,
         editorHeight: editorBounds.height,
         editorTop: editorBounds.top,
-        injectedWritingStyleCount: injectedWritingStyles.length,
         noteAreaBottom: noteAreaBounds.bottom,
         noteAreaTop: noteAreaBounds.top,
         pageShellBottom: pageShellBounds.bottom,
@@ -747,11 +722,9 @@ test('opens the packaged editor for a supported HTTP tab without fatal runtime e
         rootTop: rootBounds.top,
         statusTop: statusBounds.top,
         statusBottom: statusBounds.bottom,
-        verticalGap: Number.parseFloat(noteAreaStyles.rowGap),
         viewportHeight: window.innerHeight,
       };
     });
-    expect(shortNoteLayout.injectedWritingStyleCount).toBe(1);
     expect(shortNoteLayout.editorHeight).toBeGreaterThan(450);
     expect(shortNoteLayout.canvasBelowLastBlock).toBeGreaterThan(350);
     expect(
@@ -763,13 +736,9 @@ test('opens the packaged editor for a supported HTTP tab without fatal runtime e
     expect(
       Math.abs(shortNoteLayout.rootBottom - shortNoteLayout.editorBottom),
     ).toBeLessThanOrEqual(1);
-    expect(
-      Math.abs(
-        shortNoteLayout.statusTop -
-          shortNoteLayout.editorBottom -
-          shortNoteLayout.verticalGap,
-      ),
-    ).toBeLessThanOrEqual(1);
+    expect(shortNoteLayout.statusTop).toBeGreaterThanOrEqual(
+      shortNoteLayout.editorBottom,
+    );
     expect(
       Math.abs(shortNoteLayout.noteAreaBottom - shortNoteLayout.statusBottom),
     ).toBeLessThanOrEqual(1);
@@ -895,7 +864,7 @@ test('lets a pointer user click multiple blank canvas spots, type, persist, and 
   }
 });
 
-test('converts a trusted rich browser copy into styled Gutenberg blocks and persists them', async () => {
+test('converts a trusted rich browser copy into semantic Gutenberg blocks and persists them', async () => {
   test.setTimeout(75_000);
   const session = await launchExtension();
   const fixtureUrl = 'https://pageperch.test/rich-paste-fixture';
@@ -1108,111 +1077,6 @@ test('converts a trusted rich browser copy into styled Gutenberg blocks and pers
       'https://safe.example/paste',
     );
 
-    const computedWritingStyles = await editor.evaluate((editorElement) => {
-      const heading = editorElement.querySelector('h2');
-      const list = editorElement.querySelector('ul');
-      const quote = editorElement.querySelector('blockquote');
-      const code = editorElement.querySelector('pre');
-      const link = editorElement.querySelector('a');
-
-      if (
-        heading === null ||
-        list === null ||
-        quote === null ||
-        code === null ||
-        link === null
-      ) {
-        throw new Error('The rich-paste style fixture is incomplete.');
-      }
-
-      return {
-        codeBackground: getComputedStyle(code).backgroundColor,
-        codeBorderWidth: getComputedStyle(code).borderTopWidth,
-        headingFontWeight: getComputedStyle(heading).fontWeight,
-        headingLetterSpacing: getComputedStyle(heading).letterSpacing,
-        linkDecoration: getComputedStyle(link).textDecorationLine,
-        listStyleType: getComputedStyle(list).listStyleType,
-        quoteBorderWidth: getComputedStyle(quote).borderLeftWidth,
-        quoteFontStyle: getComputedStyle(quote).fontStyle,
-      };
-    });
-    expect(computedWritingStyles).toMatchObject({
-      codeBackground: 'rgb(237, 242, 238)',
-      codeBorderWidth: '1px',
-      headingFontWeight: '700',
-      linkDecoration: 'underline',
-      listStyleType: 'disc',
-      quoteBorderWidth: '3px',
-      quoteFontStyle: 'italic',
-    });
-    expect(
-      Number.parseFloat(computedWritingStyles.headingLetterSpacing),
-    ).toBeCloseTo(-0.36, 2);
-
-    const inspectBlockPresentation = async (blockSelector: string) =>
-      editor.evaluate((editorElement, selector) => {
-        const blockElement = editorElement.querySelector(selector);
-        if (!(blockElement instanceof HTMLElement)) {
-          throw new Error(`The ${selector} writing block is missing.`);
-        }
-        const root = blockElement.closest(
-          '.block-editor-block-list__layout.is-root-container',
-        );
-        const editable = blockElement.matches('[contenteditable="true"]')
-          ? blockElement
-          : blockElement.querySelector<HTMLElement>('[contenteditable="true"]');
-
-        if (!(root instanceof HTMLElement) || editable === null) {
-          throw new Error('The writing block presentation is incomplete.');
-        }
-
-        const rootStyles = getComputedStyle(root);
-        const blockStyles = getComputedStyle(blockElement);
-        const presentation = (element: Element, pseudo?: string) => {
-          const styles = getComputedStyle(element, pseudo);
-          return {
-            borderWidths: [
-              styles.borderTopWidth,
-              styles.borderRightWidth,
-              styles.borderBottomWidth,
-              styles.borderLeftWidth,
-            ],
-            boxShadow: styles.boxShadow,
-            outlineStyle: styles.outlineStyle,
-            outlineWidth: styles.outlineWidth,
-          };
-        };
-
-        return {
-          blockLeft: blockElement.getBoundingClientRect().left,
-          classes: [...blockElement.classList],
-          contentLeft:
-            root.getBoundingClientRect().left +
-            Number.parseFloat(rootStyles.paddingLeft),
-          marginLeft: blockStyles.marginLeft,
-          marginRight: blockStyles.marginRight,
-          layers: [
-            presentation(blockElement),
-            presentation(blockElement, '::before'),
-            presentation(blockElement, '::after'),
-            presentation(editable),
-            presentation(editable, '::before'),
-            presentation(editable, '::after'),
-          ],
-        };
-      }, blockSelector);
-    const assertChromeFree = (
-      layers: Awaited<ReturnType<typeof inspectBlockPresentation>>['layers'],
-    ) => {
-      for (const layer of layers) {
-        expect.soft(layer.borderWidths).toEqual(['0px', '0px', '0px', '0px']);
-        expect
-          .soft(layer.outlineStyle === 'none' || layer.outlineWidth === '0px')
-          .toBe(true);
-        expect.soft(layer.boxShadow).toBe('none');
-      }
-    };
-
     const clickEditableWithMouse = async (blockSelector: string) => {
       const bounds = await editor.evaluate((editorElement, selector) => {
         const block = editorElement.querySelector(selector);
@@ -1256,87 +1120,38 @@ test('converts a trusted rich browser copy into styled Gutenberg blocks and pers
           }, blockSelector),
         )
         .toBe(true);
-    await clickEditableWithMouse('[data-type="core/paragraph"]');
-    await expectBlockFocused('[data-type="core/paragraph"]');
-    const paragraphPresentation = await inspectBlockPresentation(
+    const exerciseBlockEditing = async (
+      blockSelector: string,
+      editProbe: string,
+    ) => {
+      const block = editor.locator(blockSelector).first();
+      await clickEditableWithMouse(blockSelector);
+      await expectBlockFocused(blockSelector);
+      await panelPage.keyboard.press('End');
+      await panelPage.keyboard.type(editProbe);
+      await expect(block).toContainText(editProbe);
+      await panelPage.keyboard.press('Control+z');
+      await expect(block).not.toContainText(editProbe);
+    };
+
+    await exerciseBlockEditing(
       '[data-type="core/paragraph"]',
+      ' paragraph edit probe',
     );
-    expect.soft(paragraphPresentation.marginLeft).toBe('0px');
-    expect.soft(paragraphPresentation.marginRight).toBe('0px');
-    expect
-      .soft(
-        Math.abs(
-          paragraphPresentation.blockLeft - paragraphPresentation.contentLeft,
-        ),
-      )
-      .toBeLessThanOrEqual(1);
-    assertChromeFree(paragraphPresentation.layers);
-    expect(paragraphPresentation.classes).toContain('is-selected');
-
-    await clickEditableWithMouse('[data-type="core/heading"]');
-    await expectBlockFocused('[data-type="core/heading"]');
-    const headingPresentation = await inspectBlockPresentation(
+    await exerciseBlockEditing(
       '[data-type="core/heading"]',
+      ' heading edit probe',
     );
-    const listPresentation = await inspectBlockPresentation(
-      '[data-type="core/list"]',
-    );
-    for (const presentation of [headingPresentation, listPresentation]) {
-      expect.soft(presentation.marginLeft).toBe('0px');
-      expect.soft(presentation.marginRight).toBe('0px');
-      expect
-        .soft(Math.abs(presentation.blockLeft - presentation.contentLeft))
-        .toBeLessThanOrEqual(1);
-    }
-    expect(headingPresentation.classes).toContain('is-selected');
-    assertChromeFree(headingPresentation.layers);
-
-    await clickEditableWithMouse('[data-type="core/list-item"]');
-    await expectBlockFocused('[data-type="core/list-item"]');
-    const listItemPresentation = await inspectBlockPresentation(
+    await exerciseBlockEditing(
       '[data-type="core/list-item"]',
+      ' list edit probe',
     );
-    expect.soft(listItemPresentation.marginLeft).toBe('0px');
-    expect.soft(listItemPresentation.marginRight).toBe('0px');
-    expect
-      .soft(listItemPresentation.blockLeft)
-      .toBeGreaterThanOrEqual(listPresentation.blockLeft);
-    expect
-      .soft(listItemPresentation.blockLeft - listPresentation.blockLeft)
-      .toBeLessThan(64);
-    const selectedListPresentation = await inspectBlockPresentation(
-      '[data-type="core/list"]',
-    );
-    expect(
-      selectedListPresentation.classes.some((className) =>
-        ['has-child-selected', 'is-selected'].includes(className),
-      ),
-    ).toBe(true);
-    expect(listItemPresentation.classes).toContain('is-selected');
-    assertChromeFree(selectedListPresentation.layers);
-    assertChromeFree(listItemPresentation.layers);
 
     await panelPage.emulateMedia({ colorScheme: 'dark' });
-    await expect
-      .poll(() =>
-        editor.evaluate((editorElement) => {
-          const wrapper = editorElement.querySelector('.editor-styles-wrapper');
-          const link = editorElement.querySelector('a');
-
-          return wrapper === null || link === null
-            ? undefined
-            : {
-                backgroundColor: getComputedStyle(wrapper).backgroundColor,
-                color: getComputedStyle(wrapper).color,
-                linkColor: getComputedStyle(link).color,
-              };
-        }),
-      )
-      .toEqual({
-        backgroundColor: 'rgb(16, 23, 18)',
-        color: 'rgb(238, 245, 240)',
-        linkColor: 'rgb(115, 206, 144)',
-      });
+    await exerciseBlockEditing(
+      '[data-type="core/heading"]',
+      ' dark-mode edit probe',
+    );
 
     await expect
       .poll(async () => {

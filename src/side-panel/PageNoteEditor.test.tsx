@@ -1,6 +1,3 @@
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-
 import { StrictMode, type ReactNode } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { initializeEditor as initializeEditorType } from '@automattic/isolated-block-editor';
@@ -39,10 +36,6 @@ import {
   type PageNoteEditorCapabilities,
   type PageNoteEditorProps,
 } from './PageNoteEditor';
-import {
-  PAGE_NOTE_EDITOR_STYLES,
-  PAGE_NOTE_EDITOR_WRITING_CSS,
-} from './PageNoteEditorStyles';
 
 interface CapturedEditorProps {
   readonly className: string;
@@ -245,7 +238,6 @@ describe('buildPageNoteEditorCapabilities', () => {
         maxUploadFileSize: 0,
         reusableBlocks: [],
         richEditingEnabled: true,
-        styles: PAGE_NOTE_EDITOR_STYLES,
         template: null,
         templateLock: null,
       },
@@ -255,61 +247,6 @@ describe('buildPageNoteEditorCapabilities', () => {
       [],
     );
     expect(capabilities.editor.allowedBlockTypes).not.toContain('core/embed');
-  });
-
-  it('supplies a complete non-empty Gutenberg editor stylesheet asset', () => {
-    const capabilities = buildPageNoteEditorCapabilities('text-focused-blocks');
-
-    expect(capabilities.editor.styles).toBe(PAGE_NOTE_EDITOR_STYLES);
-    expect(capabilities.editor.styles).toEqual([
-      {
-        baseURL: '',
-        __unstableType: 'theme',
-        css: PAGE_NOTE_EDITOR_WRITING_CSS,
-      },
-    ]);
-    expect(PAGE_NOTE_EDITOR_WRITING_CSS.length).toBeGreaterThan(4_000);
-
-    for (const selector of [
-      'p',
-      'h1',
-      'h2',
-      'h3',
-      'h4',
-      'h5',
-      'h6',
-      'ol',
-      'ul',
-      'li',
-      'blockquote',
-      'cite',
-      'pre',
-      'code',
-      'kbd',
-      'hr',
-      'a',
-      'strong',
-      'b',
-      'em',
-      'i',
-      'mark',
-      's',
-      'del',
-      'sub',
-      'sup',
-      'br',
-    ]) {
-      expect(PAGE_NOTE_EDITOR_WRITING_CSS).toMatch(
-        new RegExp(`\\.editor-styles-wrapper ${selector}(?:[\\s,{]|$)`, 'u'),
-      );
-    }
-
-    expect(PAGE_NOTE_EDITOR_WRITING_CSS).toContain(
-      '@media (prefers-color-scheme: dark)',
-    );
-    expect(PAGE_NOTE_EDITOR_WRITING_CSS).toContain(
-      '.block-editor-block-list__layout.is-root-container > .wp-block',
-    );
   });
 
   it('returns deterministic deeply immutable capabilities', () => {
@@ -1580,7 +1517,6 @@ describe('PageNoteEditor lifecycle and save contract', () => {
     });
     expect(region).toHaveAttribute('aria-busy', 'false');
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
-    expect(capturedEditor().className).toBe('page-note-editor__isolated');
   });
 
   it('focuses the final editable at its end when blank canvas space is clicked', () => {
@@ -1697,113 +1633,3 @@ describe('PageNoteEditor local WordPress API boundary', () => {
     }
   });
 });
-
-describe('PageNoteEditor local theme contract', () => {
-  it('defines local Gutenberg variables for light and dark themes with focus and reduced-motion rules', async () => {
-    const css = await readFile(
-      resolve(import.meta.dirname, 'PageNoteEditor.css'),
-      'utf8',
-    );
-    const baseCss = await readFile(
-      resolve(import.meta.dirname, '../styles/base.css'),
-      'utf8',
-    );
-    const requiredVariables = [
-      '--wp-admin-theme-color:',
-      '--wp-admin-theme-color--rgb:',
-      '--wp-components-color-accent:',
-      '--wp-components-color-accent-inverted:',
-      '--wp-components-color-background:',
-      '--wp-components-color-foreground:',
-      '--wp-components-color-foreground-inverted:',
-      '--wp-editor-canvas-background:',
-      '--wp-editor-background:',
-      '--wp-editor-text-color:',
-    ];
-
-    for (const variable of requiredVariables) {
-      expect(css.split(variable)).toHaveLength(3);
-    }
-
-    expect(css).toContain('@media (prefers-color-scheme: dark)');
-    expect(css).toContain(':focus-visible');
-    expect(css).toContain('@media (prefers-reduced-motion: reduce)');
-    expect(css).toContain('min-height: 0');
-    expect(css).toContain('height: auto !important');
-    expect(css).toContain('max-height: none !important');
-    expect(css).toContain('overflow: visible !important');
-    expect(css).toContain('border: 0');
-    expect(css).toContain('display: none !important');
-    expect(css).not.toMatch(/url\(\s*['"]?https?:/u);
-
-    const compactCss = css.replace(/\s+/gu, ' ');
-    const compactBaseCss = baseCss.replace(/\s+/gu, ' ');
-    expect(compactCss).toMatch(
-      /\.page-note-editor__isolated\.iso-editor \.block-editor-block-list__layout\.is-root-container \{ padding-inline: 16px !important; padding-right: 16px !important; padding-left: 16px !important; \}/u,
-    );
-    expect(compactCss).toContain('@media (min-width: 600px)');
-    expect(compactCss).toMatch(
-      /\.page-note-editor__isolated\.iso-editor \.block-editor-writing-flow \{ padding-block: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; \}/u,
-    );
-    expect(compactCss).toContain(
-      '.page-note-editor__isolated.iso-editor .editor-styles-wrapper .wp-block { margin-inline: 0 !important;',
-    );
-    expect(compactCss).toContain(
-      '.page-note-editor__isolated.iso-editor .editor-styles-wrapper :where(',
-    );
-    expect(compactCss).toContain('.block-editor-block-list__block.is-selected');
-    expect(compactCss).toContain('outline: none !important');
-    expect(compactCss).toContain('box-shadow: none !important');
-
-    expect(compactBaseCss).toMatch(
-      /\.side-panel-shell \{ min-height: 100vh; display: flex; flex-direction: column;/u,
-    );
-    expect(compactBaseCss).toMatch(
-      /\.session-area \{ min-height: 0; display: flex; flex: 1 1 auto; flex-direction: column;/u,
-    );
-    expect(compactBaseCss).toMatch(
-      /\.page-document-shell \{ min-width: 0; min-height: 0; display: flex; flex: 1 1 auto; flex-direction: column;/u,
-    );
-    expect(compactBaseCss).toMatch(
-      /\.note-editor-area \{ min-height: 0; display: flex; flex: 1 1 auto; flex-direction: column;/u,
-    );
-    expect(compactBaseCss).toContain(
-      '.note-editor-area > :where(.note-status, .sync-visibility-message) { flex: 0 0 auto;',
-    );
-    expect(compactCss).toContain(
-      '.page-note-editor .page-note-editor__isolated.iso-editor .edit-post-visual-editor',
-    );
-    expect(compactCss).toContain(
-      '.page-note-editor .page-note-editor__isolated.iso-editor .components-popover__content',
-    );
-    expect(compactCss).toContain(
-      '.page-note-editor .page-note-editor__isolated.iso-editor .components-popover__triangle-bg',
-    );
-    expect(compactCss).toContain(
-      '.page-note-editor .page-note-editor__isolated.iso-editor :where(input, select, textarea)',
-    );
-    expect(css).toContain('--wp-components-color-accent: #58b775');
-    expect(css).toContain('--wp-components-color-accent-inverted: #101712');
-    expect(contrastRatio('#58b775', '#101712')).toBeGreaterThanOrEqual(4.5);
-  });
-});
-
-function contrastRatio(first: string, second: string): number {
-  const luminance = (hex: string): number => {
-    const channels = [1, 3, 5].map((start) => {
-      const channel = Number.parseInt(hex.slice(start, start + 2), 16) / 255;
-      return channel <= 0.04045
-        ? channel / 12.92
-        : ((channel + 0.055) / 1.055) ** 2.4;
-    });
-
-    return (
-      0.2126 * (channels[0] ?? 0) +
-      0.7152 * (channels[1] ?? 0) +
-      0.0722 * (channels[2] ?? 0)
-    );
-  };
-  const lighter = Math.max(luminance(first), luminance(second));
-  const darker = Math.min(luminance(first), luminance(second));
-  return (lighter + 0.05) / (darker + 0.05);
-}

@@ -83,3 +83,15 @@ Restore ordinary left-aligned block flow, retain the visible text of unsupported
 Status: completed.
 
 Bind the accepted editor-flow and non-lossy-paste correction to version `0.1.5`, run the complete release and deterministic packaging gates, and publish the standing annotated minor-update tag without rewriting prior releases.
+
+## M14 — Restore the Top Gutter and Behavioral Test Boundaries
+
+Status: completed.
+
+Add a 16-pixel top inset to the Gutenberg writing root and replace CSS-source, internal-class, and exact presentation-property assertions with rendered geometry, focus/edit/undo, semantic paste, persistence, viewport-fill, growth, and overflow behavior.
+
+## M15 — 0.1.6 Minor Update
+
+Status: in progress.
+
+Bind the accepted top-gutter and behavior-first test correction to version `0.1.6`, run the complete release and deterministic packaging gates, and publish the standing annotated minor-update tag without rewriting prior releases.

@@ -157,6 +157,7 @@
 .page-note-editor__isolated.iso-editor
   .block-editor-block-list__layout.is-root-container {
   padding-inline: 16px !important;
+  padding-top: 16px !important;
   padding-right: 16px !important;
   padding-left: 16px !important;
 }
@@ -213,6 +214,7 @@
   .page-note-editor__isolated.iso-editor
     .block-editor-block-list__layout.is-root-container {
     padding-inline: 16px !important;
+    padding-top: 16px !important;
     padding-right: 16px !important;
     padding-left: 16px !important;
   }
