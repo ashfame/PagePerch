@@ -896,7 +896,7 @@ test('lets a pointer user click multiple blank canvas spots, type, persist, and 
 });
 
 test('converts a trusted rich browser copy into styled Gutenberg blocks and persists them', async () => {
-  test.setTimeout(45_000);
+  test.setTimeout(75_000);
   const session = await launchExtension();
   const fixtureUrl = 'https://pageperch.test/rich-paste-fixture';
   const fixtureTitle = 'PagePerch rich paste fixture';
@@ -915,6 +915,23 @@ test('converts a trusted rich browser copy into styled Gutenberg blocks and pers
                 <ul><li>Trusted first item</li><li>Trusted second item</li></ul>
                 <blockquote><p>Trusted quotation</p><cite>Trusted citation</cite></blockquote>
                 <pre><code>const trustedPaste = true;</code></pre>
+                <table class="unsupported-table" style="margin-left: 80px" onclick="window.unsafeTable = true">
+                  <caption>Unsupported table caption</caption>
+                  <thead><tr><th>Unsupported table heading</th></tr></thead>
+                  <tbody>
+                    <tr><td>Unsupported first cell</td><td><strong>Unsupported second cell</strong></td></tr>
+                    <tr><td>Unsupported before<p>Unsupported middle</p>Unsupported after</td></tr>
+                  </tbody>
+                  <tfoot><tr><td>Unsupported table footer</td></tr></tfoot>
+                </table>
+                <figure class="unsupported-image" style="position: fixed">
+                  <img src="javascript:alert(1)" alt="Unsupported image alternative">
+                  <figcaption>Unsupported image caption</figcaption>
+                </figure>
+                <p>Repeated clipboard occurrence<img src="https://tracking.example/repeated.png" alt="Repeated clipboard occurrence"></p>
+                <template>Hidden template token</template>
+                <script>window.unsafePaste = true</script>
+                <style>.unsupported-table { border-collapse: collapse }</style>
                 <hr>
               </article>
             </body>
@@ -1027,6 +1044,59 @@ test('converts a trusted rich browser copy into styled Gutenberg blocks and pers
     await expect(quoteBlock).toContainText('Trusted citation');
     await expect(codeBlock).toContainText('const trustedPaste = true;');
     await expect(separatorBlock).toBeVisible();
+    const recoveredVisibleOccurrences = [
+      'Unsupported table caption',
+      'Unsupported table heading',
+      'Unsupported first cell',
+      'Unsupported second cell',
+      'Unsupported before',
+      'Unsupported middle',
+      'Unsupported after',
+      'Unsupported table footer',
+      'Unsupported image alternative',
+      'Unsupported image caption',
+      'Repeated clipboard occurrence',
+      'Repeated clipboard occurrence',
+    ] as const;
+    const hasExactRecoveredText = (value: string) => {
+      let cursor = 0;
+      for (const occurrence of recoveredVisibleOccurrences) {
+        const index = value.indexOf(occurrence, cursor);
+        if (index === -1) {
+          return false;
+        }
+        cursor = index + occurrence.length;
+      }
+
+      const expectedCounts = new Map<string, number>();
+      for (const occurrence of recoveredVisibleOccurrences) {
+        expectedCounts.set(
+          occurrence,
+          (expectedCounts.get(occurrence) ?? 0) + 1,
+        );
+      }
+      return [...expectedCounts].every(([occurrence, expectedCount]) => {
+        let actualCount = 0;
+        let occurrenceCursor = 0;
+        while (true) {
+          const index = value.indexOf(occurrence, occurrenceCursor);
+          if (index === -1) {
+            break;
+          }
+          actualCount += 1;
+          occurrenceCursor = index + occurrence.length;
+        }
+        return actualCount === expectedCount;
+      });
+    };
+    await expect
+      .poll(async () => hasExactRecoveredText(await editor.innerText()))
+      .toBe(true);
+    const editorText = await editor.innerText();
+    expect(hasExactRecoveredText(editorText)).toBe(true);
+    await expect(
+      editor.getByText('Unsupported content was removed.'),
+    ).toHaveCount(0);
     await expect(editor.locator('strong')).toHaveText('trusted bold');
     await expect(editor.locator('em')).toHaveText('trusted emphasis');
     await expect(editor.locator('mark')).toHaveText('trusted mark');
@@ -1079,6 +1149,173 @@ test('converts a trusted rich browser copy into styled Gutenberg blocks and pers
       Number.parseFloat(computedWritingStyles.headingLetterSpacing),
     ).toBeCloseTo(-0.36, 2);
 
+    const inspectBlockPresentation = async (blockSelector: string) =>
+      editor.evaluate((editorElement, selector) => {
+        const blockElement = editorElement.querySelector(selector);
+        if (!(blockElement instanceof HTMLElement)) {
+          throw new Error(`The ${selector} writing block is missing.`);
+        }
+        const root = blockElement.closest(
+          '.block-editor-block-list__layout.is-root-container',
+        );
+        const editable = blockElement.matches('[contenteditable="true"]')
+          ? blockElement
+          : blockElement.querySelector<HTMLElement>('[contenteditable="true"]');
+
+        if (!(root instanceof HTMLElement) || editable === null) {
+          throw new Error('The writing block presentation is incomplete.');
+        }
+
+        const rootStyles = getComputedStyle(root);
+        const blockStyles = getComputedStyle(blockElement);
+        const presentation = (element: Element, pseudo?: string) => {
+          const styles = getComputedStyle(element, pseudo);
+          return {
+            borderWidths: [
+              styles.borderTopWidth,
+              styles.borderRightWidth,
+              styles.borderBottomWidth,
+              styles.borderLeftWidth,
+            ],
+            boxShadow: styles.boxShadow,
+            outlineStyle: styles.outlineStyle,
+            outlineWidth: styles.outlineWidth,
+          };
+        };
+
+        return {
+          blockLeft: blockElement.getBoundingClientRect().left,
+          classes: [...blockElement.classList],
+          contentLeft:
+            root.getBoundingClientRect().left +
+            Number.parseFloat(rootStyles.paddingLeft),
+          marginLeft: blockStyles.marginLeft,
+          marginRight: blockStyles.marginRight,
+          layers: [
+            presentation(blockElement),
+            presentation(blockElement, '::before'),
+            presentation(blockElement, '::after'),
+            presentation(editable),
+            presentation(editable, '::before'),
+            presentation(editable, '::after'),
+          ],
+        };
+      }, blockSelector);
+    const assertChromeFree = (
+      layers: Awaited<ReturnType<typeof inspectBlockPresentation>>['layers'],
+    ) => {
+      for (const layer of layers) {
+        expect.soft(layer.borderWidths).toEqual(['0px', '0px', '0px', '0px']);
+        expect
+          .soft(layer.outlineStyle === 'none' || layer.outlineWidth === '0px')
+          .toBe(true);
+        expect.soft(layer.boxShadow).toBe('none');
+      }
+    };
+
+    const clickEditableWithMouse = async (blockSelector: string) => {
+      const bounds = await editor.evaluate((editorElement, selector) => {
+        const block = editorElement.querySelector(selector);
+        const editable =
+          block?.matches('[contenteditable="true"]') === true
+            ? block
+            : block?.querySelector('[contenteditable="true"]');
+        if (!(editable instanceof HTMLElement)) {
+          throw new Error(`The ${selector} writing block is not editable.`);
+        }
+        editable.scrollIntoView({ block: 'center' });
+        const rect = editable.getBoundingClientRect();
+        return {
+          height: rect.height,
+          width: rect.width,
+          x: rect.x,
+          y: rect.y,
+        };
+      }, blockSelector);
+      if (bounds.width === 0 || bounds.height === 0) {
+        throw new Error('The writing block has no clickable bounds.');
+      }
+      await panelPage.mouse.click(
+        bounds.x + Math.min(8, bounds.width / 2),
+        bounds.y + bounds.height / 2,
+      );
+    };
+    const expectBlockFocused = async (blockSelector: string) =>
+      expect
+        .poll(() =>
+          editor.evaluate((editorElement, selector) => {
+            const block = editorElement.querySelector(selector);
+            const editable =
+              block?.matches('[contenteditable="true"]') === true
+                ? block
+                : block?.querySelector('[contenteditable="true"]');
+            return (
+              editable === document.activeElement ||
+              editable?.contains(document.activeElement) === true
+            );
+          }, blockSelector),
+        )
+        .toBe(true);
+    await clickEditableWithMouse('[data-type="core/paragraph"]');
+    await expectBlockFocused('[data-type="core/paragraph"]');
+    const paragraphPresentation = await inspectBlockPresentation(
+      '[data-type="core/paragraph"]',
+    );
+    expect.soft(paragraphPresentation.marginLeft).toBe('0px');
+    expect.soft(paragraphPresentation.marginRight).toBe('0px');
+    expect
+      .soft(
+        Math.abs(
+          paragraphPresentation.blockLeft - paragraphPresentation.contentLeft,
+        ),
+      )
+      .toBeLessThanOrEqual(1);
+    assertChromeFree(paragraphPresentation.layers);
+    expect(paragraphPresentation.classes).toContain('is-selected');
+
+    await clickEditableWithMouse('[data-type="core/heading"]');
+    await expectBlockFocused('[data-type="core/heading"]');
+    const headingPresentation = await inspectBlockPresentation(
+      '[data-type="core/heading"]',
+    );
+    const listPresentation = await inspectBlockPresentation(
+      '[data-type="core/list"]',
+    );
+    for (const presentation of [headingPresentation, listPresentation]) {
+      expect.soft(presentation.marginLeft).toBe('0px');
+      expect.soft(presentation.marginRight).toBe('0px');
+      expect
+        .soft(Math.abs(presentation.blockLeft - presentation.contentLeft))
+        .toBeLessThanOrEqual(1);
+    }
+    expect(headingPresentation.classes).toContain('is-selected');
+    assertChromeFree(headingPresentation.layers);
+
+    await clickEditableWithMouse('[data-type="core/list-item"]');
+    await expectBlockFocused('[data-type="core/list-item"]');
+    const listItemPresentation = await inspectBlockPresentation(
+      '[data-type="core/list-item"]',
+    );
+    expect.soft(listItemPresentation.marginLeft).toBe('0px');
+    expect.soft(listItemPresentation.marginRight).toBe('0px');
+    expect
+      .soft(listItemPresentation.blockLeft)
+      .toBeGreaterThanOrEqual(listPresentation.blockLeft);
+    expect
+      .soft(listItemPresentation.blockLeft - listPresentation.blockLeft)
+      .toBeLessThan(64);
+    const selectedListPresentation = await inspectBlockPresentation(
+      '[data-type="core/list"]',
+    );
+    expect(
+      selectedListPresentation.classes.some((className) =>
+        ['has-child-selected', 'is-selected'].includes(className),
+      ),
+    ).toBe(true);
+    expect(listItemPresentation.classes).toContain('is-selected');
+    assertChromeFree(selectedListPresentation.layers);
+    assertChromeFree(listItemPresentation.layers);
+
     await panelPage.emulateMedia({ colorScheme: 'dark' });
     await expect
       .poll(() =>
@@ -1121,8 +1358,12 @@ test('converts a trusted rich browser copy into styled Gutenberg blocks and pers
     expect(stored.contentHtml).toContain(
       '<a href="https://safe.example/paste" rel="noopener noreferrer">trusted safe link</a>',
     );
+    expect(hasExactRecoveredText(stored.contentHtml)).toBe(true);
+    expect
+      .soft(stored.contentHtml)
+      .not.toContain('Unsupported content was removed.');
     expect(stored.contentHtml).not.toMatch(
-      /class="source-|style=|onclick=|javascript:|data:/iu,
+      /class="(?:source-|unsupported-)|style=|onclick=|javascript:|data:|wp:table|wp:image|Hidden template token|unsafePaste|unsafeTable/iu,
     );
 
     await panelPage.reload();
@@ -1142,6 +1383,16 @@ test('converts a trusted rich browser copy into styled Gutenberg blocks and pers
     await expect(
       panelPage.getByRole('link', { name: 'trusted safe link' }),
     ).toHaveAttribute('href', 'https://safe.example/paste');
+    const reloadedEditor = panelPage.getByRole('region', {
+      name: 'Page note editor',
+    });
+    await expect
+      .poll(async () => hasExactRecoveredText(await reloadedEditor.innerText()))
+      .toBe(true);
+    expect(hasExactRecoveredText(await reloadedEditor.innerText())).toBe(true);
+    await expect(
+      panelPage.getByText('Unsupported content was removed.'),
+    ).toHaveCount(0);
   } finally {
     await closeExtension(session);
   }

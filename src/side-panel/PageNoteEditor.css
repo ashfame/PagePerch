@@ -161,6 +161,54 @@
   padding-left: 16px !important;
 }
 
+.page-note-editor__isolated.iso-editor .editor-styles-wrapper .wp-block {
+  margin-inline: 0 !important;
+  margin-right: 0 !important;
+  margin-left: 0 !important;
+}
+
+.page-note-editor__isolated.iso-editor
+  .editor-styles-wrapper
+  :where(
+    [data-type='core/paragraph'],
+    [data-type='core/heading'],
+    [data-type='core/list'],
+    [data-type='core/list-item']
+  ):is(.is-selected, .has-child-selected, .is-multi-selected, .is-highlighted),
+.page-note-editor__isolated.iso-editor
+  .editor-styles-wrapper
+  [contenteditable='true']:is(:focus, :focus-visible) {
+  border-color: transparent !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.page-note-editor__isolated.iso-editor
+  .editor-styles-wrapper
+  :where(
+    .block-editor-block-list__block.is-selected,
+    .block-editor-block-list__block.has-child-selected,
+    .block-editor-block-list__block.is-multi-selected,
+    .block-editor-block-list__block.is-highlighted,
+    .block-editor-block-list__block.has-editable-outline
+  )::before,
+.page-note-editor__isolated.iso-editor
+  .editor-styles-wrapper
+  :where(
+    .block-editor-block-list__block.is-selected,
+    .block-editor-block-list__block.has-child-selected,
+    .block-editor-block-list__block.is-multi-selected,
+    .block-editor-block-list__block.is-highlighted,
+    .block-editor-block-list__block.has-editable-outline
+  )::after {
+  display: none !important;
+  content: none !important;
+  border: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+  animation: none !important;
+}
+
 @media (min-width: 600px) {
   .page-note-editor__isolated.iso-editor
     .block-editor-block-list__layout.is-root-container {
@@ -171,8 +219,7 @@
 }
 
 .page-note-editor__isolated :where(button, [role='button']):focus-visible,
-.page-note-editor__isolated
-  :where([contenteditable='true'], input, textarea):focus-visible {
+.page-note-editor__isolated :where(input, textarea):focus-visible {
   outline: 3px solid var(--page-note-editor-focus);
   outline-offset: 2px;
 }
@@ -304,8 +351,7 @@
       .components-menu-item__button,
       input,
       select,
-      textarea,
-      [contenteditable='true']
+      textarea
     ):focus-visible {
     outline: 3px solid var(--page-note-editor-focus);
     outline-offset: 2px;

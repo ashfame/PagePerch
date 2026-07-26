@@ -208,3 +208,25 @@
 - Suggested files: version metadata, README, release evidence, orchestration state
 - Test expectations: Complete `npm run check`, repeated deterministic `npm run release:package`, exact archive/checksum cardinality and names, strict checksum verification, ZIP integrity, embedded manifest/source/settings version inspection, clean source/tag verification, and green implementation/branch/tag CI
 - Notes: The independently accepted PP-016 implementation was committed and its complete CI gate passed before release metadata changed. Package, both lockfile version fields, source manifest, archived manifest, runtime settings display, and README agree at `0.1.4`. The complete 971-test/build/audit/browser gate passes with seven Chromium flows and one intentional toolbar skip. Two packaging runs produced the identical 5,064,434-byte archive with SHA-256 `bfbba61cc137d1be2599e3d86c20bef4b6d37a1550e705e3889f0ebf7c53223c`; strict checksum verification, ZIP integrity, exact two-file artifact cardinality, and embedded-manifest inspection pass. The release source is committed, annotated as `PagePerch 0.1.4 — Minor update`, and pushed without rewriting `v0.1.3`.
+
+## PP-018 — Preserve Editor Alignment, Focus, and Unsupported Paste Text
+
+- Status: completed
+- Priority: P0
+- Dependencies: PP-017 manual feedback
+- Spec or plan references: User manual feedback after `v0.1.4`; Plan: Side Panel; safe Gutenberg persistence projection
+- Acceptance criteria: Supported root and nested writing blocks use ordinary left-aligned document flow without inherited auto margins; selecting or editing a block or list item shows no blue block border, outline, or selection shadow while controls outside the canvas retain accessible keyboard focus; unsupported pasted structures preserve their visible textual content in source order as safe supported Gutenberg blocks rather than substituting or persisting a removal placeholder; active content, event handlers, unsafe URL schemes, arbitrary unsupported HTML, and duplicated nested text do not cross persistence; trusted packaged-browser paste, persistence, and reload prove the non-lossy fallback.
+- Suggested files: `src/side-panel/PageNoteEditor.tsx`, `src/side-panel/PageNoteEditorStyles.ts`, `src/side-panel/PageNoteEditor.css`, `src/side-panel/PageNoteEditor.test.tsx`, `e2e/extension.smoke.spec.ts`
+- Test expectations: Focused sanitizer and style-contract cases; trusted Chromium unsupported-structure paste with all visible text retained through storage and reload; computed paragraph/heading/list alignment and margin assertions; selected paragraph/list-item chrome assertions; complete `npm run check`
+- Notes: Accepted after one rejected review and one bounded corrective pass. Clipboard fragments are sanitized before Gutenberg conversion; complete supported conversions retain rich blocks, while incomplete unsupported fragments become safe paragraphs through DOM-order text/image-alt traversal with exact occurrence accounting. Repeated text, mixed parent/child order, tables, figures, concealed subtrees, malformed unsafe stored markup, arbitrary attributes/CSS/URLs, limits, persistence, and reload have direct coverage. Canvas-scoped CSS restores zero inline block margins and removes rendered selection chrome from selected paragraphs, headings, lists, and list items while settings controls retain a 3-pixel keyboard focus indicator. The main gate passes with 977 tests at 91.45% statement and 87.39% branch coverage, seven Chromium passes, and one documented native-toolbar skip.
+
+## PP-019 — Cut the 0.1.5 Corrective Minor Update
+
+- Status: pending
+- Priority: P0
+- Dependencies: PP-018
+- Spec or plan references: User-requested editor correction and standing minor-update tag convention
+- Acceptance criteria: Package, lockfile, source manifest, archived manifest, settings display, and README commands agree at `0.1.5`; the complete release gate passes; one deterministic `pageperch-0.1.5.zip` plus matching strict checksum is produced twice identically; the accepted source commit is annotated with `v0.1.5` using the standing minor-update message and both commit and tag are pushed without rewriting prior releases.
+- Suggested files: version metadata, README, release evidence, orchestration state
+- Test expectations: Complete `npm run check`, repeated deterministic `npm run release:package`, strict checksum/ZIP/cardinality/version verification, clean source/tag verification, and green implementation/branch/tag CI
+- Notes: Main orchestrator owns release metadata, commit, package, tag, push, CI confirmation, and handoff after PP-018 acceptance.

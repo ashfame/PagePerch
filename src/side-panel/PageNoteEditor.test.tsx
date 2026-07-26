@@ -32,6 +32,7 @@ vi.mock('@automattic/isolated-block-editor', () => ({
 
 import {
   adaptStructuredBlocksToRoot,
+  convertClipboardHtmlToSafeBlocks,
   PageNoteEditor,
   buildPageNoteEditorCapabilities,
   isSerializedGutenbergDocument,
@@ -558,6 +559,92 @@ describe('PageNoteEditor loading contract', () => {
     );
   });
 
+  it('recovers unsupported clipboard structures from source HTML in visible order', () => {
+    const html = [
+      '<article>',
+      '<table style="margin-left:80px" onclick="alert(1)">',
+      '<caption>Clipboard caption</caption>',
+      '<thead><tr><th>Clipboard heading</th></tr></thead>',
+      '<tbody><tr><td>Clipboard first cell</td><td><strong>Clipboard second cell</strong></td></tr></tbody>',
+      '<tfoot><tr><td>Clipboard footer</td></tr></tfoot>',
+      '</table>',
+      '<figure><img src="javascript:alert(1)" alt="Clipboard image alternative"><figcaption>Clipboard image caption</figcaption></figure>',
+      '<template>Hidden template text</template>',
+      '<style>.clipboard { color: red }</style>',
+      '</article>',
+    ].join('');
+
+    const serialized = serialize(
+      convertClipboardHtmlToSafeBlocks(
+        html,
+        'Clipboard caption Clipboard heading Clipboard first cell Clipboard second cell Clipboard footer Clipboard image alternative Clipboard image caption',
+        'text-focused-blocks',
+      ),
+    );
+
+    expect(serialized).toMatch(
+      /Clipboard caption[\s\S]*Clipboard heading[\s\S]*Clipboard first cell[\s\S]*Clipboard second cell[\s\S]*Clipboard footer[\s\S]*Clipboard image alternative[\s\S]*Clipboard image caption/u,
+    );
+    expect(serialized).not.toMatch(
+      /wp:(?:table|image)|Unsupported content was removed|style=|onclick=|javascript:|Hidden template text|\.clipboard/u,
+    );
+  });
+
+  it('preserves repeated clipboard text occurrences instead of treating one match as complete', () => {
+    const serialized = serialize(
+      convertClipboardHtmlToSafeBlocks(
+        '<p>Same<img src="https://tracking.example/image.png" alt="Same"></p>',
+        'Same Same',
+        'text-focused-blocks',
+      ),
+    );
+
+    expect(serialized.match(/Same/gu)).toHaveLength(2);
+    expect(serialized).not.toContain('tracking.example');
+  });
+
+  it('recovers mixed unsupported clipboard content in exact visible source order', () => {
+    const serialized = serialize(
+      convertClipboardHtmlToSafeBlocks(
+        '<table><tbody><tr><td>before<p>middle</p>after</td></tr></tbody></table>',
+        'before middle after',
+        'text-focused-blocks',
+      ),
+    );
+
+    expect(serialized).toMatch(/before[\s\S]*middle[\s\S]*after/u);
+    for (const token of ['before', 'middle', 'after']) {
+      expect(serialized.match(new RegExp(token, 'gu'))).toHaveLength(1);
+    }
+  });
+
+  it('excludes explicitly concealed clipboard subtrees without guessing from class names', () => {
+    const serialized = serialize(
+      convertClipboardHtmlToSafeBlocks(
+        [
+          '<article>',
+          '<p class="hidden">Ordinary class remains visible<span hidden>Nested hidden</span> and its visible tail</p>',
+          '<p hidden>Hidden attribute</p>',
+          '<p aria-hidden="true">ARIA hidden</p>',
+          '<p style="display:none">Display hidden</p>',
+          '<p style="visibility:hidden">Visibility hidden</p>',
+          '<p style="content-visibility:hidden">Content visibility hidden</p>',
+          '<div inert><p>Inert subtree</p></div>',
+          '<noscript>Noscript subtree</noscript>',
+          '</article>',
+        ].join(''),
+        'Ordinary class remains visible',
+        'text-focused-blocks',
+      ),
+    );
+
+    expect(serialized).toContain('Ordinary class remains visible');
+    expect(serialized).toContain('and its visible tail');
+    expect(serialized).not.toMatch(
+      /Nested hidden|Hidden attribute|ARIA hidden|Display hidden|Visibility hidden|Content visibility hidden|Inert subtree|Noscript subtree/u,
+    );
+  });
+
   it('sanitizes block-delimited clipboard HTML that bypasses WordPress paste filtering', () => {
     const onContentChange = vi.fn();
     render(<PageNoteEditor {...createProps({ onContentChange })} />);
@@ -729,8 +816,38 @@ describe('PageNoteEditor loading contract', () => {
     );
     const forbidden = [
       testBlock('core/image', {
+        alt: 'Visible image alternative',
         url: 'https://tracking.example/image.png',
         caption: '<strong>Visible caption</strong>',
+      }),
+      testBlock('core/table', {
+        head: [
+          {
+            cells: [{ content: '<strong>Visible table heading</strong>' }],
+          },
+        ],
+        body: [
+          {
+            cells: [
+              { content: 'Visible first cell' },
+              { content: '<em>Visible second cell</em>' },
+            ],
+          },
+        ],
+        foot: [
+          {
+            cells: [{ content: 'Visible table footer' }],
+          },
+        ],
+        caption: 'Visible table caption',
+        style: {
+          color: { text: 'expression(alert(1))' },
+        },
+      }),
+      testBlock('custom/unsupported', {
+        innerHTML:
+          '<p>Visible inner HTML</p><template>Hidden template text</template><style>.leak { color: red }</style>',
+        eventHandler: 'alert(1)',
       }),
       testBlock('core/html', {
         content:
@@ -765,6 +882,27 @@ describe('PageNoteEditor loading contract', () => {
         name: 'core/paragraph',
       },
       {
+        name: 'core/paragraph',
+      },
+      {
+        name: 'core/paragraph',
+      },
+      {
+        name: 'core/paragraph',
+      },
+      {
+        name: 'core/paragraph',
+      },
+      {
+        name: 'core/paragraph',
+      },
+      {
+        name: 'core/paragraph',
+      },
+      {
+        name: 'core/paragraph',
+      },
+      {
         name: 'core/quote',
         innerBlocks: [
           {
@@ -774,29 +912,76 @@ describe('PageNoteEditor loading contract', () => {
       },
       {
         name: 'core/quote',
-        innerBlocks: [
-          {
-            name: 'core/paragraph',
-          },
-        ],
+        innerBlocks: [],
       },
       {
         name: 'core/list',
-        innerBlocks: [
-          {
-            name: 'core/list-item',
-          },
-        ],
+        innerBlocks: [],
       },
     ]);
     const serialized = serialize(sanitized);
+    expect(serialized).toMatch(
+      /Visible image alternative[\s\S]*Visible caption[\s\S]*Visible table heading[\s\S]*Visible first cell[\s\S]*Visible second cell[\s\S]*Visible table footer[\s\S]*Visible table caption[\s\S]*Visible inner HTML[\s\S]*Recovered HTML text[\s\S]*Nested embed caption/u,
+    );
     expect(serialized).toContain('Visible caption');
     expect(serialized).toContain('Recovered HTML text');
     expect(serialized).toContain('Nested embed caption');
-    expect(serialized).toContain('Unsupported content was removed.');
+    expect(serialized).not.toContain('Unsupported content was removed.');
     expect(serialized).not.toMatch(
-      /core\/(?:image|embed|video|html)|tracking\.example/u,
+      /core\/(?:image|embed|video|html|table)|tracking\.example|Hidden template text|expression|alert\(1\)|\.leak/u,
     );
+  });
+
+  it('fails closed on malformed unsafe stored HTML while preserving preceding safe text', () => {
+    render(
+      <PageNoteEditor
+        {...createProps({
+          initialContentHtml: '<!-- wp:paragraph /-->',
+        })}
+      />,
+    );
+
+    const sanitized = capturedEditor().onLoad(
+      () => [
+        testBlock('custom/template', {
+          content:
+            '<strong>Safe template prefix</strong><template>Hidden template remainder',
+        }),
+        testBlock('core/paragraph', {
+          content: '<em>Safe script prefix</em><script>Hidden script remainder',
+        }),
+      ],
+      vi.fn(),
+    );
+    const serialized = serialize(sanitized);
+
+    expect(serialized).toContain('Safe template prefix');
+    expect(serialized).toContain('Safe script prefix');
+    expect(serialized).not.toMatch(
+      /Hidden template remainder|Hidden script remainder|<template|<script/u,
+    );
+  });
+
+  it('retains genuine repeated text from parent and nested stored block provenance', () => {
+    render(
+      <PageNoteEditor
+        {...createProps({
+          initialContentHtml: '<!-- wp:paragraph /-->',
+        })}
+      />,
+    );
+
+    const sanitized = capturedEditor().onLoad(
+      () => [
+        testBlock('custom/parent', { content: 'Repeated occurrence' }, [
+          testBlock('custom/child', { content: 'Repeated occurrence' }),
+        ]),
+      ],
+      vi.fn(),
+    );
+    const serialized = serialize(sanitized);
+
+    expect(serialized.match(/Repeated occurrence/gu)).toHaveLength(2);
   });
 
   it('flattens malformed paragraph children safely in both editor modes', () => {
@@ -823,7 +1008,7 @@ describe('PageNoteEditor loading contract', () => {
       const serialized = serialize(blocks);
       expect(serialized).toContain('Parent text');
       expect(serialized).toContain('Nested visible text');
-      expect(serialized).toContain('Unsupported content was removed.');
+      expect(serialized).not.toContain('Unsupported content was removed.');
       expect(serialized).not.toMatch(
         /core\/(?:image|embed)|tracking\.example/u,
       );
@@ -870,8 +1055,9 @@ describe('PageNoteEditor loading contract', () => {
     );
     const serialized = serialize(sanitized);
     expect(serialized).toMatch(
-      /Heading text[\s\S]*First item[\s\S]*Second item[\s\S]*Unsupported content was removed\.[\s\S]*Classic text/u,
+      /Heading text[\s\S]*First item[\s\S]*Second item[\s\S]*Classic text/u,
     );
+    expect(serialized).not.toContain('Unsupported content was removed.');
     expect(serialized).not.toContain('tracking.example');
   });
 
@@ -1559,6 +1745,15 @@ describe('PageNoteEditor local theme contract', () => {
     expect(compactCss).toMatch(
       /\.page-note-editor__isolated\.iso-editor \.block-editor-writing-flow \{ padding-block: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; \}/u,
     );
+    expect(compactCss).toContain(
+      '.page-note-editor__isolated.iso-editor .editor-styles-wrapper .wp-block { margin-inline: 0 !important;',
+    );
+    expect(compactCss).toContain(
+      '.page-note-editor__isolated.iso-editor .editor-styles-wrapper :where(',
+    );
+    expect(compactCss).toContain('.block-editor-block-list__block.is-selected');
+    expect(compactCss).toContain('outline: none !important');
+    expect(compactCss).toContain('box-shadow: none !important');
 
     expect(compactBaseCss).toMatch(
       /\.side-panel-shell \{ min-height: 100vh; display: flex; flex-direction: column;/u,

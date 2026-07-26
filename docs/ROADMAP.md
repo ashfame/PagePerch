@@ -71,3 +71,15 @@ Replace the inadequate keyboard-focused typing evidence with a dedicated package
 Status: completed.
 
 Bind the independently accepted interaction correction to version `0.1.4`, run the complete release and deterministic packaging gates, and publish the standing annotated minor-update tag without rewriting the rejected `v0.1.3` release.
+
+## M12 — Preserve Editor Flow and Pasted Text
+
+Status: completed.
+
+Restore ordinary left-aligned block flow, retain the visible text of unsupported pasted structures through a safe Gutenberg-text fallback instead of a destructive placeholder, and remove distracting selected-block chrome without weakening focus treatment outside the writing canvas.
+
+## M13 — 0.1.5 Corrective Minor Update
+
+Status: in progress.
+
+Bind the accepted editor-flow and non-lossy-paste correction to version `0.1.5`, run the complete release and deterministic packaging gates, and publish the standing annotated minor-update tag without rewriting prior releases.

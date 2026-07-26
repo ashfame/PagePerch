@@ -103,10 +103,9 @@ const TEXT_FOCUSED_BLOCKS = [
 const PARAGRAPH_ONLY_BLOCKS = ['core/paragraph'] as const;
 const EMPTY_ITEMS = Object.freeze([]) as readonly never[];
 const NO_LINK_SUGGESTIONS = (): readonly never[] => EMPTY_ITEMS;
-const UNSAFE_CONTENT_PLACEHOLDER = 'Unsupported content was removed.';
 const MAX_BLOCK_DEPTH = 32;
 const MAX_BLOCK_COUNT = 2_000;
-const VISIBLE_ATTRIBUTE_KEYS = [
+const VISIBLE_ATTRIBUTE_KEYS = new Set([
   'content',
   'value',
   'citation',
@@ -114,7 +113,26 @@ const VISIBLE_ATTRIBUTE_KEYS = [
   'alt',
   'title',
   'description',
-] as const;
+  'text',
+  'label',
+  'summary',
+  'innerHTML',
+  'html',
+]);
+const NON_VISIBLE_ATTRIBUTE_KEYS = new Set([
+  'anchor',
+  'className',
+  'eventHandler',
+  'href',
+  'id',
+  'linkTarget',
+  'metadata',
+  'providerNameSlug',
+  'rel',
+  'src',
+  'style',
+  'url',
+]);
 const SAFE_INLINE_TAGS = new Set([
   'strong',
   'b',
@@ -129,7 +147,7 @@ const SAFE_INLINE_TAGS = new Set([
   'sup',
 ]);
 const UNSAFE_ELEMENT_PATTERN =
-  /<(script|style|iframe|object|embed|svg|math)\b[^>]*>[\s\S]*?<\/\1\s*>/giu;
+  /<(script|style|template|iframe|object|embed|svg|math)\b[^>]*(?:>[\s\S]*?(?:<\/\1\s*>|$)|$)/giu;
 const HTML_COMMENT_PATTERN = /<!--[\s\S]*?-->/gu;
 const HTML_TAG_PATTERN = /<\/?([a-z][a-z0-9-]*)\b[^>]*>/giu;
 const BLOCK_BREAK_PATTERN =
@@ -370,22 +388,57 @@ function sanitizeRichText(value: string): string {
   );
 }
 
-function visibleSegments(block: BlockValue): string[] {
-  const ownSegments = VISIBLE_ATTRIBUTE_KEYS.flatMap((key) => {
-    const value = readRichTextValue(block.attributes[key]);
+function visibleAttributeSegments(
+  value: unknown,
+  key: string,
+  depth = 0,
+): string[] {
+  if (depth > MAX_BLOCK_DEPTH) {
+    throw new UnsafeStoredContentError(
+      'The stored note exceeds the safe visible-text nesting limit.',
+    );
+  }
 
-    if (value === undefined) {
+  if (NON_VISIBLE_ATTRIBUTE_KEYS.has(key) || /^on[a-z]/iu.test(key)) {
+    return [];
+  }
+
+  const richText = readRichTextValue(value);
+  if (richText !== undefined) {
+    if (!VISIBLE_ATTRIBUTE_KEYS.has(key)) {
       return [];
     }
 
-    const text = extractVisibleText(value);
+    const text = extractVisibleText(richText);
     return text === '' ? [] : [text];
-  });
+  }
 
-  return [
-    ...ownSegments,
-    ...block.innerBlocks.flatMap((innerBlock) => visibleSegments(innerBlock)),
-  ];
+  if (Array.isArray(value)) {
+    return value.flatMap((item) =>
+      visibleAttributeSegments(item, key, depth + 1),
+    );
+  }
+
+  if (typeof value !== 'object' || value === null) {
+    return [];
+  }
+
+  return Object.entries(value).flatMap(([nestedKey, nestedValue]) =>
+    visibleAttributeSegments(nestedValue, nestedKey, depth + 1),
+  );
+}
+
+function visibleSegments(block: BlockValue): string[] {
+  const ownSegments = Object.entries(block.attributes).flatMap(([key, value]) =>
+    visibleAttributeSegments(value, key),
+  );
+  const nestedSegments = block.innerBlocks.flatMap((innerBlock) =>
+    visibleSegments(innerBlock),
+  );
+
+  // Attribute values and child blocks have distinct structural provenance.
+  // Retain both occurrences rather than guessing that equal text is duplicate.
+  return [...ownSegments, ...nestedSegments];
 }
 
 function makeBlock(
@@ -397,11 +450,7 @@ function makeBlock(
 }
 
 function paragraphBlocksFromVisibleText(block: BlockValue): BlockValue[] {
-  const segments = visibleSegments(block);
-  const safeSegments =
-    segments.length === 0 ? [UNSAFE_CONTENT_PLACEHOLDER] : segments;
-
-  return safeSegments.map((segment) =>
+  return visibleSegments(block).map((segment) =>
     makeBlock('core/paragraph', {
       content: escapeHtmlText(segment),
     }),
@@ -415,10 +464,7 @@ function readRichContent(block: BlockValue, key = 'content'): string {
     return '';
   }
 
-  const sanitized = sanitizeRichText(value);
-  return value.trim() !== '' && extractVisibleText(sanitized) === ''
-    ? UNSAFE_CONTENT_PLACEHOLDER
-    : sanitized;
+  return sanitizeRichText(value);
 }
 
 function sanitizeListItem(block: BlockValue): BlockValue {
@@ -446,7 +492,7 @@ function sanitizeListItem(block: BlockValue): BlockValue {
   return makeBlock(
     'core/list-item',
     {
-      content: content === '' ? UNSAFE_CONTENT_PLACEHOLDER : content,
+      content,
     },
     nestedLists,
   );
@@ -455,10 +501,9 @@ function sanitizeListItem(block: BlockValue): BlockValue {
 function sanitizeTextFocusedBlock(block: BlockValue): BlockValue[] {
   switch (block.name) {
     case 'core/paragraph': {
-      const nestedContent = block.innerBlocks.flatMap((innerBlock) => {
-        const segments = visibleSegments(innerBlock);
-        return segments.length === 0 ? [UNSAFE_CONTENT_PLACEHOLDER] : segments;
-      });
+      const nestedContent = block.innerBlocks.flatMap((innerBlock) =>
+        visibleSegments(innerBlock),
+      );
       const content = [
         readRichContent(block),
         ...nestedContent.map((text) => escapeHtmlText(text)),
@@ -503,15 +548,14 @@ function sanitizeTextFocusedBlock(block: BlockValue): BlockValue[] {
           {
             ordered: block.attributes.ordered === true,
           },
-          block.innerBlocks.map((innerBlock) =>
+          block.innerBlocks.flatMap((innerBlock) =>
             innerBlock.name === 'core/list-item'
-              ? sanitizeListItem(innerBlock)
-              : makeBlock('core/list-item', {
-                  content: escapeHtmlText(
-                    visibleSegments(innerBlock).join(' ') ||
-                      UNSAFE_CONTENT_PLACEHOLDER,
-                  ),
-                }),
+              ? [sanitizeListItem(innerBlock)]
+              : visibleSegments(innerBlock).map((text) =>
+                  makeBlock('core/list-item', {
+                    content: escapeHtmlText(text),
+                  }),
+                ),
           ),
         ),
       ];
@@ -524,14 +568,6 @@ function sanitizeTextFocusedBlock(block: BlockValue): BlockValue[] {
           : paragraphBlocksFromVisibleText(innerBlock),
       );
       const citation = readRichContent(block, 'citation');
-      const innerBlocks =
-        sanitizedInnerBlocks.length === 0 && extractVisibleText(citation) === ''
-          ? [
-              makeBlock('core/paragraph', {
-                content: UNSAFE_CONTENT_PLACEHOLDER,
-              }),
-            ]
-          : sanitizedInnerBlocks;
 
       return [
         makeBlock(
@@ -539,7 +575,7 @@ function sanitizeTextFocusedBlock(block: BlockValue): BlockValue[] {
           {
             citation,
           },
-          innerBlocks,
+          sanitizedInnerBlocks,
         ),
       ];
     }
@@ -680,6 +716,7 @@ function validateSanitizedBlocks(
 function sanitizeBlocks(
   parsedValue: unknown,
   editorMode: EditorMode,
+  ensureEditable = true,
 ): BlockValue[] {
   // Stored block names and attributes are untrusted. Rebuild only the local
   // text schema, then validate the rebuilt tree before Gutenberg can render it.
@@ -693,8 +730,260 @@ function sanitizeBlocks(
         )
       : parsedBlocks.flatMap((block) => sanitizeTextFocusedBlock(block));
 
-  validateSanitizedBlocks(sanitized, editorMode);
-  return sanitized;
+  const editableSanitized =
+    ensureEditable && sanitized.length === 0
+      ? [makeBlock('core/paragraph')]
+      : sanitized;
+  validateSanitizedBlocks(editableSanitized, editorMode);
+  return editableSanitized;
+}
+
+const UNSAFE_CLIPBOARD_ELEMENTS = new Set([
+  'EMBED',
+  'IFRAME',
+  'LINK',
+  'MATH',
+  'META',
+  'NOSCRIPT',
+  'OBJECT',
+  'SCRIPT',
+  'STYLE',
+  'SVG',
+  'TEMPLATE',
+]);
+const CLIPBOARD_WRAPPER_ELEMENTS = new Set([
+  'ARTICLE',
+  'DIV',
+  'MAIN',
+  'SECTION',
+]);
+function normalizeClipboardText(value: string): string {
+  return value.replace(/\s+/gu, ' ').trim();
+}
+
+function isClipboardElementConcealed(element: Element): boolean {
+  if (
+    UNSAFE_CLIPBOARD_ELEMENTS.has(element.tagName) ||
+    element.hasAttribute('hidden') ||
+    element.hasAttribute('inert') ||
+    element.getAttribute('aria-hidden')?.trim().toLowerCase() === 'true'
+  ) {
+    return true;
+  }
+
+  if (!(element instanceof HTMLElement)) {
+    return false;
+  }
+
+  const display = element.style.display.trim().toLowerCase();
+  const visibility = element.style.visibility.trim().toLowerCase();
+  const contentVisibility = element.style
+    .getPropertyValue('content-visibility')
+    .trim()
+    .toLowerCase();
+
+  return (
+    display === 'none' ||
+    visibility === 'hidden' ||
+    visibility === 'collapse' ||
+    contentVisibility === 'hidden'
+  );
+}
+
+function safeClipboardElement(element: Element): Element | null {
+  if (isClipboardElementConcealed(element)) {
+    return null;
+  }
+
+  const clone = element.cloneNode(true);
+  if (!(clone instanceof Element)) {
+    return null;
+  }
+
+  for (const descendant of [...clone.querySelectorAll('*')]) {
+    if (isClipboardElementConcealed(descendant)) {
+      descendant.remove();
+    }
+  }
+
+  return clone;
+}
+
+function clipboardVisibleSegments(element: Element): string[] {
+  const segments: string[] = [];
+  const visit = (node: Node): void => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = normalizeClipboardText(node.textContent ?? '');
+      if (text !== '') {
+        segments.push(text);
+      }
+      return;
+    }
+
+    if (!(node instanceof Element) || isClipboardElementConcealed(node)) {
+      return;
+    }
+
+    if (node instanceof HTMLImageElement) {
+      const alt = normalizeClipboardText(node.alt);
+      if (alt !== '') {
+        segments.push(alt);
+      }
+      return;
+    }
+
+    for (const child of node.childNodes) {
+      visit(child);
+    }
+  };
+
+  visit(element);
+  return segments;
+}
+
+function countTextOccurrences(value: string, search: string): number {
+  let count = 0;
+  let cursor = 0;
+
+  while (search !== '') {
+    const index = value.indexOf(search, cursor);
+    if (index === -1) {
+      break;
+    }
+    count += 1;
+    cursor = index + search.length;
+  }
+
+  return count;
+}
+
+function convertedTextPreservesSegments(
+  convertedText: string,
+  sourceSegments: readonly string[],
+): boolean {
+  let cursor = 0;
+  for (const segment of sourceSegments) {
+    const index = convertedText.indexOf(segment, cursor);
+    if (index === -1) {
+      return false;
+    }
+    cursor = index + segment.length;
+  }
+
+  const sourceText = sourceSegments.join(' ');
+  return [...new Set(sourceSegments)].every(
+    (segment) =>
+      countTextOccurrences(convertedText, segment) ===
+      countTextOccurrences(sourceText, segment),
+  );
+}
+
+function clipboardFragmentNodes(documentNode: Document): ChildNode[] {
+  let nodes = [...documentNode.body.childNodes].filter(
+    (node) =>
+      node.nodeType !== Node.TEXT_NODE ||
+      (node.textContent ?? '').trim() !== '',
+  );
+
+  while (
+    nodes.length === 1 &&
+    nodes[0] instanceof Element &&
+    CLIPBOARD_WRAPPER_ELEMENTS.has(nodes[0].tagName) &&
+    !isClipboardElementConcealed(nodes[0])
+  ) {
+    nodes = [...nodes[0].childNodes].filter(
+      (node) =>
+        node.nodeType !== Node.TEXT_NODE ||
+        (node.textContent ?? '').trim() !== '',
+    );
+  }
+
+  return nodes;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function convertClipboardHtmlToSafeBlocks(
+  html: string,
+  _plainText: string,
+  editorMode: EditorMode,
+): BlockValue[] {
+  const clipboardDocument = new DOMParser().parseFromString(html, 'text/html');
+  const clipboardElements = [...clipboardDocument.body.querySelectorAll('*')];
+
+  if (clipboardElements.length > MAX_BLOCK_COUNT) {
+    throw new UnsafeStoredContentError(
+      'The pasted content exceeds the safe element count limit.',
+    );
+  }
+
+  for (const element of clipboardElements) {
+    let depth = 0;
+    let ancestor = element.parentElement;
+    while (ancestor !== null && ancestor !== clipboardDocument.body) {
+      depth += 1;
+      if (depth > MAX_BLOCK_DEPTH) {
+        throw new UnsafeStoredContentError(
+          'The pasted content exceeds the safe element nesting limit.',
+        );
+      }
+      ancestor = ancestor.parentElement;
+    }
+  }
+
+  const safeBlocks = clipboardFragmentNodes(clipboardDocument).flatMap(
+    (node) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = (node.textContent ?? '').replace(/\s+/gu, ' ').trim();
+        return text === ''
+          ? []
+          : [
+              makeBlock('core/paragraph', {
+                content: escapeHtmlText(text),
+              }),
+            ];
+      }
+
+      if (!(node instanceof Element)) {
+        return [];
+      }
+
+      const safeElement = safeClipboardElement(node);
+      if (safeElement === null) {
+        return [];
+      }
+
+      const fallbackSegments = clipboardVisibleSegments(safeElement);
+      const converted = pasteHandler({
+        HTML: safeElement.outerHTML,
+        plainText: fallbackSegments.join(' '),
+        mode: 'BLOCKS',
+      });
+      const convertedBlocks =
+        typeof converted === 'string'
+          ? []
+          : sanitizeBlocks(converted, editorMode, false);
+      const convertedVisibleText = normalizeClipboardText(
+        extractVisibleText(serialize(convertedBlocks)),
+      );
+      const conversionIsComplete = convertedTextPreservesSegments(
+        convertedVisibleText,
+        fallbackSegments,
+      );
+
+      return conversionIsComplete
+        ? convertedBlocks
+        : fallbackSegments.map((segment) =>
+            makeBlock('core/paragraph', {
+              content: escapeHtmlText(segment),
+            }),
+          );
+    },
+  );
+  const editableSafeBlocks =
+    safeBlocks.length === 0 ? [makeBlock('core/paragraph')] : safeBlocks;
+
+  validateSanitizedBlocks(editableSafeBlocks, editorMode);
+  return editableSafeBlocks;
 }
 
 interface PageNoteEditorCapabilitiesShape {
@@ -1038,18 +1327,18 @@ function RichPasteBridge({
           return;
         }
 
-        const converted = pasteHandler({
-          HTML: html,
-          plainText: event.clipboardData?.getData('text/plain'),
-          mode: 'BLOCKS',
-        });
-
-        if (typeof converted === 'string' || converted.length === 0) {
-          return;
-        }
+        const blocks = convertClipboardHtmlToSafeBlocks(
+          html,
+          event.clipboardData?.getData('text/plain') ?? '',
+          editorMode,
+        );
 
         const isStructuredPaste =
-          converted.length > 1 || converted[0]?.name !== 'core/paragraph';
+          blocks.length > 1 ||
+          blocks[0]?.name !== 'core/paragraph' ||
+          /<(?:article|aside|blockquote|details|div|figure|h[1-6]|hr|li|main|ol|pre|section|table|ul)\b/iu.test(
+            html,
+          );
 
         // Native Gutenberg owns inline insertion. This bridge guarantees
         // structured conversion in the pinned isolated-editor integration only
@@ -1058,7 +1347,6 @@ function RichPasteBridge({
           return;
         }
 
-        const blocks = sanitizeBlocks(converted, editorMode);
         const rootClientId = editor.getBlockRootClientId(firstSelectedClientId);
         const isFullySelected = editor.__unstableIsFullySelected();
         const selectionStart = editor.getSelectionStart();
