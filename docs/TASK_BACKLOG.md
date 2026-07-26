@@ -222,11 +222,11 @@
 
 ## PP-019 — Cut the 0.1.5 Corrective Minor Update
 
-- Status: pending
+- Status: completed
 - Priority: P0
 - Dependencies: PP-018
 - Spec or plan references: User-requested editor correction and standing minor-update tag convention
 - Acceptance criteria: Package, lockfile, source manifest, archived manifest, settings display, and README commands agree at `0.1.5`; the complete release gate passes; one deterministic `pageperch-0.1.5.zip` plus matching strict checksum is produced twice identically; the accepted source commit is annotated with `v0.1.5` using the standing minor-update message and both commit and tag are pushed without rewriting prior releases.
 - Suggested files: version metadata, README, release evidence, orchestration state
 - Test expectations: Complete `npm run check`, repeated deterministic `npm run release:package`, strict checksum/ZIP/cardinality/version verification, clean source/tag verification, and green implementation/branch/tag CI
-- Notes: Main orchestrator owns release metadata, commit, package, tag, push, CI confirmation, and handoff after PP-018 acceptance.
+- Notes: The independently accepted PP-018 implementation was committed and its complete CI gate passed before release metadata changed. Package, both lockfile version fields, source manifest, archived manifest, runtime settings display, and README agree at `0.1.5`. The complete 977-test/build/audit/browser gate passes with seven Chromium flows and one intentional native-toolbar skip. Two packaging runs produced the identical 5,068,617-byte archive with SHA-256 `40c6bcde8b9805a8ad6a1e629750a01eaf5d38b37af68c25e5dd58f15bc66468`; strict checksum verification, ZIP integrity, exact two-file artifact cardinality, and embedded-manifest inspection pass. The release source is committed, annotated as `PagePerch 0.1.5 — Minor update`, and pushed without rewriting prior releases.

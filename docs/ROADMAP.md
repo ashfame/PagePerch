@@ -80,6 +80,6 @@ Restore ordinary left-aligned block flow, retain the visible text of unsupported
 
 ## M13 — 0.1.5 Corrective Minor Update
 
-Status: in progress.
+Status: completed.
 
 Bind the accepted editor-flow and non-lossy-paste correction to version `0.1.5`, run the complete release and deterministic packaging gates, and publish the standing annotated minor-update tag without rewriting prior releases.
