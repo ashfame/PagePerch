@@ -68,6 +68,6 @@ Replace the inadequate keyboard-focused typing evidence with a dedicated package
 
 ## M11 — 0.1.4 Corrective Minor Update
 
-Status: in progress.
+Status: completed.
 
 Bind the independently accepted interaction correction to version `0.1.4`, run the complete release and deterministic packaging gates, and publish the standing annotated minor-update tag without rewriting the rejected `v0.1.3` release.

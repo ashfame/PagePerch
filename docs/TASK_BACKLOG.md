@@ -200,11 +200,11 @@
 
 ## PP-017 — Cut the 0.1.4 Corrective Minor Update
 
-- Status: in progress
+- Status: completed
 - Priority: P0
 - Dependencies: PP-016
 - Spec or plan references: User manual feedback after `v0.1.3`; standing minor-update tag convention
 - Acceptance criteria: Package, lockfile, source manifest, archived manifest, settings display, and README commands agree at `0.1.4`; the complete release gate passes; one deterministic `pageperch-0.1.4.zip` plus matching strict checksum is produced twice identically; the source commit is annotated with `v0.1.4` using the standing minor-update message and both commit and tag are pushed without rewriting `v0.1.3`.
 - Suggested files: version metadata, README, release evidence, orchestration state
 - Test expectations: Complete `npm run check`, repeated deterministic `npm run release:package`, exact archive/checksum cardinality and names, strict checksum verification, ZIP integrity, embedded manifest/source/settings version inspection, clean source/tag verification, and green implementation/branch/tag CI
-- Notes: Main orchestrator owns the implementation commit before release changes, then version binding, packaging, release evidence, commit, tag, push, and final manual-test handoff.
+- Notes: The independently accepted PP-016 implementation was committed and its complete CI gate passed before release metadata changed. Package, both lockfile version fields, source manifest, archived manifest, runtime settings display, and README agree at `0.1.4`. The complete 971-test/build/audit/browser gate passes with seven Chromium flows and one intentional toolbar skip. Two packaging runs produced the identical 5,064,434-byte archive with SHA-256 `bfbba61cc137d1be2599e3d86c20bef4b6d37a1550e705e3889f0ebf7c53223c`; strict checksum verification, ZIP integrity, exact two-file artifact cardinality, and embedded-manifest inspection pass. The release source is committed, annotated as `PagePerch 0.1.4 — Minor update`, and pushed without rewriting `v0.1.3`.
