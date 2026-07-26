@@ -92,6 +92,6 @@ Add a 16-pixel top inset to the Gutenberg writing root and replace CSS-source, i
 
 ## M15 — 0.1.6 Minor Update
 
-Status: in progress.
+Status: completed.
 
 Bind the accepted top-gutter and behavior-first test correction to version `0.1.6`, run the complete release and deterministic packaging gates, and publish the standing annotated minor-update tag without rewriting prior releases.
