@@ -1666,10 +1666,3 @@ test('refreshes the exact-origin root index from storage and opens only its cano
     await closeExtensionAndFixtureServer(session, fixtureServer);
   }
 });
-
-test('documents the unavailable toolbar-to-side-panel automation boundary', () => {
-  test.skip(
-    true,
-    'Playwright cannot deterministically click a Chromium extension toolbar action or inspect its side-panel host; the real worker getPanelBehavior result and packaged global default_path are verified separately.',
-  );
-});
