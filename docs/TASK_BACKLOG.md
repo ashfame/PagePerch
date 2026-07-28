@@ -252,3 +252,36 @@
 - Suggested files: version metadata, README, release evidence, orchestration state
 - Test expectations: Complete `npm run check`, repeated deterministic `npm run release:package`, strict checksum/ZIP/cardinality/version verification, clean source/tag verification, and green implementation/branch/tag CI
 - Notes: The accepted PP-020 implementation was committed as `d7994f7` and CI run `30201357317` passed before release metadata changed. Package, both lockfile version fields, source manifest, archived manifest, runtime settings display, and README agree at `0.1.6`. The complete 973-test/build/audit/browser gate passes with seven Chromium flows and one intentional native-toolbar skip. Two packaging runs produced the identical 5,068,671-byte archive with SHA-256 `89abdfb21a6b21d45c3fa6dfd325bae36cd1d7a237c32c3ff10d831ad70eb67a`; strict checksum verification, ZIP integrity, exact two-file artifact cardinality, and embedded-manifest inspection pass. The release source is committed, annotated as `PagePerch 0.1.6 — Minor update`, and pushed without rewriting prior releases.
+
+## PP-022 — Add Hierarchical Recent Notes and Filtering
+
+- Status: completed
+- Priority: P0
+- Dependencies: PP-021 and commit `efa650d`
+- Spec or plan references: User feedback after `v0.1.6`; Plan: Side Panel; default-off recent-note refinement
+- Acceptance criteria: The existing opt-in recent-note preference remains off by default and performs no index work while disabled; enabled root pages list all other valid notes on the exact origin; enabled non-root pages list only true descendant path notes and exclude the current page, same-path query variants, similarly prefixed siblings, tombstones, malformed records, and cross-origin records; the section title reflects root versus page context; a right-aligned Filter control focuses a labeled input, filters loaded title or canonical path/query entries without requerying storage, clears active filtering on the first Escape, closes an empty field and restores trigger focus on the next Escape, and resets on navigation; the actual editor remains at least 400 pixels high before the recent-note section grows the page; BYOS behavior and stored settings shape remain unchanged.
+- Suggested files: `src/side-panel/rootRecentNotes.ts`, `src/side-panel/App.tsx`, editor/panel styles, options copy, focused tests, packaged Chromium coverage, README, and durable project state
+- Test expectations: Descendant boundary/root/invalid-record unit coverage; filter focus/matching/no-match/Escape/navigation component behavior; rendered 400-pixel editor minimum and hierarchical/filter/canonical-open Chromium behavior; complete `npm run check`; audited manual-test ZIP
+- Notes: One bounded worker implemented the candidate without committing, pushing, versioning, tagging, packaging, or changing BYOS. One independent reviewer approved it with no blockers. The complete gate passes with 42 files and 975 Vitest cases plus seven of seven runnable Chromium scenarios with no skips. Two deterministic packaging runs produced the identical 5,071,184-byte `.release/pageperch-0.1.6.zip` candidate with SHA-256 `e2d7ffb3eeb7b5c948168a91c405ea5e860cfe089369734a95f3000b0f0c792a`, a matching strict sidecar, valid ZIP structure, and embedded manifest version `0.1.6`. The user manually accepted the candidate on 2026-07-29 and authorized commit, push, and the next annotated minor-update tag; approved live BYOS verification remains a manual boundary.
+
+## PP-023 — Cut the 0.1.7 Minor Update
+
+- Status: pending
+- Priority: P0
+- Dependencies: PP-022
+- Spec or plan references: User acceptance on 2026-07-29 and standing minor-update tag convention
+- Acceptance criteria: Package, lockfile, source manifest, runtime settings display, and README commands agree at `0.1.7`; the complete release gate passes; one deterministic `pageperch-0.1.7.zip` plus matching strict checksum is produced twice identically; the accepted source commit is annotated with `v0.1.7` using the standing minor-update message and both commit and tag are pushed without rewriting prior releases.
+- Suggested files: Version metadata, README, release evidence, orchestration state
+- Test expectations: Complete `npm run check`, repeated deterministic `npm run release:package`, strict checksum/ZIP/version verification, clean source/tag verification, and green branch/tag CI
+- Notes: Main orchestrator owns accepted implementation commit, release metadata, package, tag, push, and verification.
+
+## PP-024 — Stabilize Recent-Note Filtering and Show Visible Count
+
+- Status: pending
+- Priority: P0
+- Dependencies: PP-023
+- Spec or plan references: User follow-up after accepting PP-022
+- Acceptance criteria: Opening and using the recent-note filter preserves at least the section height captured with the complete unfiltered list so result removal does not move the focused input in the viewport; closing or navigating releases the reservation; the context-specific heading suffix shows the number of currently visible notes, including zero for a no-match filter; loading and error states do not invent a count; accessibility and two-stage Escape remain intact.
+- Suggested files: `src/side-panel/App.tsx`, panel styles if needed, component tests, packaged Chromium coverage, README, and durable project state
+- Test expectations: Behavior-focused component coverage for full/filtered/zero counts and reset; real rendered-browser evidence that section height and input position remain stable while results shrink; focused and complete gates; uncommitted audited manual-test ZIP
+- Notes: Implement only after `v0.1.7` is committed, pushed, and tagged; present as a separate uncommitted candidate for user review.

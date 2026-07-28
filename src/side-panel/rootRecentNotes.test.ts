@@ -42,16 +42,21 @@ function rootSession(
   };
 }
 
-function nonRootSession(): SupportedActivePageSessionState {
+function nonRootSession(
+  canonicalUrl = 'https://example.com/article',
+  pageKey = 'N'.repeat(43),
+): SupportedActivePageSessionState {
+  const url = new URL(canonicalUrl);
+
   return {
-    ...rootSession(),
-    representativeUrl: 'https://example.com/article',
+    ...rootSession(url.origin),
+    representativeUrl: canonicalUrl,
     identity: {
-      ...rootSession().identity,
-      canonicalUrl: 'https://example.com/article',
+      ...rootSession(url.origin).identity,
+      canonicalUrl,
       isRoot: false,
-      pageKey: 'N'.repeat(43),
-      pathname: '/article',
+      pageKey,
+      pathname: url.pathname,
     },
   };
 }
@@ -155,7 +160,7 @@ function latestReady(
 }
 
 describe('DefaultRootRecentNotesIndex loading', () => {
-  it('queries the exact root origin, preserves service order, excludes the root/deleted entries, and publishes immutable snapshots', async () => {
+  it('queries the exact root origin, preserves service order, excludes invalid/current/deleted entries, and publishes immutable snapshots', async () => {
     const harness = createHarness();
     const root = rootSession();
     const first = note('A'.repeat(43), { title: 'First' });
@@ -163,7 +168,24 @@ describe('DefaultRootRecentNotesIndex loading', () => {
     const deleted = note('D'.repeat(43), {
       deletedAt: '2026-07-25T09:00:00.000Z',
     });
-    const records = [note(root.identity.pageKey), first, deleted, second];
+    const wrongRecordOrigin = note('O'.repeat(43), {
+      origin: 'https://other.example',
+    });
+    const wrongCanonicalOrigin = note('C'.repeat(43), {
+      canonicalUrl: 'https://other.example/cross-origin',
+    });
+    const malformed = note('M'.repeat(43), {
+      canonicalUrl: 'not a URL',
+    });
+    const records = [
+      note(root.identity.pageKey),
+      first,
+      deleted,
+      wrongRecordOrigin,
+      wrongCanonicalOrigin,
+      malformed,
+      second,
+    ];
     harness.listRecentByOrigin.mockResolvedValueOnce(records);
 
     harness.connection.setSession(root);
@@ -199,11 +221,78 @@ describe('DefaultRootRecentNotesIndex loading', () => {
     ]);
   });
 
-  it('does not query or subscribe for non-root and unsupported sessions', async () => {
+  it('lists only true same-origin pathname descendants for a non-root page', async () => {
+    const harness = createHarness();
+    const current = nonRootSession(
+      'https://example.com/WordPress/wordpress-playground/pull/4095?view=summary',
+    );
+    const directChild = note('A'.repeat(43), {
+      canonicalUrl:
+        'https://example.com/WordPress/wordpress-playground/pull/4095/changes',
+      title: 'Changes',
+    });
+    const deepChild = note('B'.repeat(43), {
+      canonicalUrl:
+        'https://example.com/WordPress/wordpress-playground/pull/4095/commits/one?diff=split',
+      title: 'Commit',
+    });
+    const samePathQuery = note('Q'.repeat(43), {
+      canonicalUrl:
+        'https://example.com/WordPress/wordpress-playground/pull/4095?view=files',
+    });
+    const boundaryCollision = note('C'.repeat(43), {
+      canonicalUrl:
+        'https://example.com/WordPress/wordpress-playground/pull/40950/changes',
+    });
+    const sibling = note('S'.repeat(43), {
+      canonicalUrl:
+        'https://example.com/WordPress/wordpress-playground/pull/4094',
+    });
+    const crossOrigin = note('O'.repeat(43), {
+      canonicalUrl:
+        'https://other.example/WordPress/wordpress-playground/pull/4095/changes',
+      origin: 'https://other.example',
+    });
+    const malformed = note('M'.repeat(43), {
+      canonicalUrl: 'not a URL',
+    });
+    const deletedChild = note('D'.repeat(43), {
+      canonicalUrl:
+        'https://example.com/WordPress/wordpress-playground/pull/4095/deleted',
+      deletedAt: '2026-07-25T09:00:00.000Z',
+    });
+    harness.listRecentByOrigin.mockResolvedValueOnce([
+      note(current.identity.pageKey, {
+        canonicalUrl: current.identity.canonicalUrl,
+      }),
+      directChild,
+      samePathQuery,
+      boundaryCollision,
+      deepChild,
+      sibling,
+      crossOrigin,
+      malformed,
+      deletedChild,
+    ]);
+
+    harness.connection.setSession(current);
+    await settle();
+
+    expect(harness.listRecentByOrigin).toHaveBeenCalledWith(
+      current.identity.origin,
+    );
+    expect(harness.changes.subscribe).toHaveBeenCalledWith(
+      current.identity.origin,
+      expect.any(Function),
+    );
+    expect(
+      latestReady(harness.states).entries.map((entry) => entry.pageKey),
+    ).toEqual([directChild.pageKey, deepChild.pageKey]);
+  });
+
+  it('does not query or subscribe without a supported session', async () => {
     const harness = createHarness();
 
-    harness.connection.setSession(nonRootSession());
-    await settle();
     harness.connection.setSession(undefined);
     await settle();
 
@@ -363,7 +452,10 @@ describe('DefaultRootRecentNotesIndex concurrency and lifecycle', () => {
     );
 
     oldLoad.resolve([
-      note('A'.repeat(43), { origin: oldRoot.identity.origin }),
+      note('A'.repeat(43), {
+        canonicalUrl: `${oldRoot.identity.origin}/old`,
+        origin: oldRoot.identity.origin,
+      }),
     ]);
     await settle();
     expect(harness.states.at(-1)).toMatchObject({
@@ -372,7 +464,10 @@ describe('DefaultRootRecentNotesIndex concurrency and lifecycle', () => {
     });
 
     newLoad.resolve([
-      note('B'.repeat(43), { origin: newRoot.identity.origin }),
+      note('B'.repeat(43), {
+        canonicalUrl: `${newRoot.identity.origin}/new`,
+        origin: newRoot.identity.origin,
+      }),
     ]);
     await settle();
     expect(latestReady(harness.states)).toMatchObject({

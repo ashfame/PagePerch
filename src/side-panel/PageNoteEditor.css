@@ -21,7 +21,7 @@
   --wp-editor-background: #ffffff;
   --wp-editor-text-color: #17241b;
   min-width: 0;
-  min-height: 0;
+  min-height: 400px;
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;

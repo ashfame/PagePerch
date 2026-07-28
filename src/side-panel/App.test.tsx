@@ -1463,7 +1463,7 @@ describe('SidePanelApp recent origin notes', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('renders the opted-in index only for a supported root page and starts with an accessible loading state', async () => {
+  it('renders the opted-in index for every supported page with a context-specific heading and accessible loading state', async () => {
     const recentIndex = new FakeRootRecentNotesIndex();
     const recentNotesPorts = createRecentNotesTestPorts({
       index: recentIndex,
@@ -1474,12 +1474,49 @@ describe('SidePanelApp recent origin notes', () => {
     });
     await settleReact();
 
-    emit(controller, supportedSession());
     expect(
       screen.queryByRole('heading', {
-        name: 'Recent notes on this origin',
+        name: 'Recent notes under this page',
       }),
     ).not.toBeInTheDocument();
+
+    const child = supportedSession();
+    emit(controller, child);
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'Recent notes under this page',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Loading recent notes')).toHaveAttribute(
+      'role',
+      'status',
+    );
+    expect(recentIndex.setSession).toHaveBeenLastCalledWith(child);
+    act(() => {
+      recentIndex.emit({
+        loadError: true,
+        pageKey: child.identity.pageKey,
+        status: 'error',
+        subscriptionError: false,
+      });
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'could not load recent notes under this page',
+    );
+    act(() => {
+      recentIndex.emit({
+        entries: [],
+        pageKey: child.identity.pageKey,
+        refreshError: false,
+        refreshing: false,
+        status: 'ready',
+        subscriptionError: false,
+      });
+    });
+    expect(
+      screen.getByText('No saved notes under this page yet.'),
+    ).toHaveAttribute('role', 'status');
 
     const root = rootSupportedSession();
     emit(controller, root);
@@ -1574,6 +1611,99 @@ describe('SidePanelApp recent origin notes', () => {
     expect(recentNotesPorts.openCanonicalUrl).toHaveBeenCalledWith(
       'https://example.com/article?view=notes',
     );
+  });
+
+  it('filters by title or canonical context, reports no matches, handles two-stage Escape, and resets on navigation', async () => {
+    const user = userEvent.setup();
+    const recentIndex = new FakeRootRecentNotesIndex();
+    const recentNotesPorts = createRecentNotesTestPorts({
+      index: recentIndex,
+    });
+    const { controller } = renderApp({
+      recentNotesPorts,
+      showRecentNotesOnOrigin: true,
+    });
+    await settleReact();
+    const current = supportedSession();
+    emit(controller, current);
+    act(() => {
+      recentIndex.emit({
+        entries: [
+          {
+            canonicalUrl: 'https://example.com/path/changes?view=notes',
+            pageKey: 'C'.repeat(43),
+            savedAt: '2026-07-25T08:00:00.000Z',
+            title: 'Pull request changes',
+          },
+          {
+            canonicalUrl: 'https://example.com/path/commits?diff=split',
+            pageKey: 'D'.repeat(43),
+            savedAt: '2026-07-24T08:00:00.000Z',
+            title: 'Commit history',
+          },
+        ],
+        pageKey: current.identity.pageKey,
+        refreshError: false,
+        refreshing: false,
+        status: 'ready',
+        subscriptionError: false,
+      });
+    });
+
+    const filterButton = screen.getByRole('button', { name: 'Filter' });
+    await user.click(filterButton);
+    const filterInput = screen.getByRole('searchbox', {
+      name: 'Filter recent notes',
+    });
+    expect(filterInput).toHaveFocus();
+
+    await user.type(filterInput, 'CHANGES?VIEW');
+    expect(screen.getByText('Pull request changes')).toBeInTheDocument();
+    expect(screen.queryByText('Commit history')).not.toBeInTheDocument();
+
+    await user.clear(filterInput);
+    await user.type(filterInput, 'nothing matches');
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'No recent notes match this filter.',
+    );
+
+    await user.keyboard('{Escape}');
+    expect(filterInput).toHaveValue('');
+    expect(filterInput).toHaveFocus();
+    expect(screen.getByText('Pull request changes')).toBeInTheDocument();
+    expect(screen.getByText('Commit history')).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    expect(
+      screen.queryByRole('searchbox', { name: 'Filter recent notes' }),
+    ).not.toBeInTheDocument();
+    expect(filterButton).toHaveFocus();
+
+    await user.click(filterButton);
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Filter recent notes' }),
+      'commit',
+    );
+    emit(
+      controller,
+      supportedSession({
+        representativeUrl: 'https://example.com/another',
+        identity: {
+          canonicalUrl: 'https://example.com/another',
+          isRoot: false,
+          origin: 'https://example.com',
+          pageKey: 'Z'.repeat(43),
+          pathname: '/another',
+        },
+      }),
+    );
+
+    expect(
+      screen.queryByRole('searchbox', { name: 'Filter recent notes' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Recent notes under this page' }),
+    ).toBeInTheDocument();
   });
 
   it('renders actionable initial and retained refresh errors without blocking the editor', async () => {
@@ -1724,7 +1854,7 @@ describe('SidePanelApp recent origin notes', () => {
     expect(recentNotesPorts.openCanonicalUrl).toHaveBeenCalledTimes(3);
   });
 
-  it('filters stale root state across root and non-root navigation', async () => {
+  it('filters stale recent-note state across root and non-root navigation', async () => {
     const recentIndex = new FakeRootRecentNotesIndex();
     const recentNotesPorts = createRecentNotesTestPorts({
       index: recentIndex,
@@ -1788,10 +1918,11 @@ describe('SidePanelApp recent origin notes', () => {
 
     emit(controller, supportedSession());
     expect(
-      screen.queryByRole('heading', {
-        name: 'Recent notes on this origin',
+      screen.getByRole('heading', {
+        name: 'Recent notes under this page',
       }),
-    ).not.toBeInTheDocument();
+    ).toBeInTheDocument();
+    expect(screen.getByText('Loading recent notes')).toBeInTheDocument();
   });
 
   it('uses one logical index subscription and initial query through the React StrictMode probe', async () => {

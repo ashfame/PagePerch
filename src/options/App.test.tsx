@@ -324,7 +324,7 @@ describe('OptionsApp', () => {
     const testHarness = harness(current);
     await renderReady(testHarness);
     const checkbox = screen.getByRole('checkbox', {
-      name: /show recent notes on root pages/iu,
+      name: /show recent notes under pages/iu,
     });
 
     expect(checkbox).not.toBeChecked();
@@ -351,7 +351,7 @@ describe('OptionsApp', () => {
     );
     await renderReady(testHarness);
     const checkbox = screen.getByRole('checkbox', {
-      name: /show recent notes on root pages/iu,
+      name: /show recent notes under pages/iu,
     });
 
     await user.click(checkbox);
@@ -382,7 +382,7 @@ describe('OptionsApp', () => {
     );
     await renderReady(testHarness);
     const checkbox = screen.getByRole('checkbox', {
-      name: /show recent notes on root pages/iu,
+      name: /show recent notes under pages/iu,
     });
     const editorMode = screen.getByRole('combobox', { name: 'Editor mode' });
 

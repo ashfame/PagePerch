@@ -688,20 +688,55 @@ function savedTimeLabel(savedAt: string): string {
   }).format(date);
 }
 
-function RecentOriginNotes({
+function RecentNotes({
+  isRoot,
   pageKey,
   pageOpener,
   retry,
   state,
 }: {
+  readonly isRoot: boolean;
   readonly pageKey: string;
   readonly pageOpener: CanonicalPageOpener;
   readonly retry: () => void;
   readonly state: RootRecentNotesState | undefined;
 }) {
   const activeState = state?.pageKey === pageKey ? state : undefined;
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterQuery, setFilterQuery] = useState('');
   const [openErrorPageKey, setOpenErrorPageKey] = useState<string>();
   const actionLifecycleRef = useRef({ attempt: 0, mounted: true });
+  const filterButtonRef = useRef<HTMLButtonElement>(null);
+  const filterInputRef = useRef<HTMLInputElement>(null);
+  const heading = isRoot
+    ? 'Recent notes on this origin'
+    : 'Recent notes under this page';
+  const emptyMessage = isRoot
+    ? 'No other saved notes on this origin yet.'
+    : 'No saved notes under this page yet.';
+  const entries =
+    activeState?.status === 'ready' ? activeState.entries : undefined;
+  const normalizedFilter = filterQuery.toLocaleLowerCase();
+  const visibleEntries =
+    entries === undefined || normalizedFilter === ''
+      ? entries
+      : entries.filter((entry) => {
+          const title = recentNoteTitle(entry).toLocaleLowerCase();
+          const context = canonicalContext(
+            entry.canonicalUrl,
+          ).toLocaleLowerCase();
+
+          return (
+            title.includes(normalizedFilter) ||
+            context.includes(normalizedFilter)
+          );
+        });
+
+  useEffect(() => {
+    if (filterOpen) {
+      filterInputRef.current?.focus();
+    }
+  }, [filterOpen]);
 
   useEffect(() => {
     const lifecycle = actionLifecycleRef.current;
@@ -740,9 +775,53 @@ function RecentOriginNotes({
   return (
     <section
       className="surface recent-notes-surface"
-      aria-labelledby="recent-origin-notes-heading"
+      aria-labelledby="recent-notes-heading"
     >
-      <h2 id="recent-origin-notes-heading">Recent notes on this origin</h2>
+      <div className="recent-notes-heading-row">
+        <h2 id="recent-notes-heading">{heading}</h2>
+        <button
+          ref={filterButtonRef}
+          type="button"
+          className="recent-notes-filter-link"
+          aria-controls="recent-notes-filter"
+          aria-expanded={filterOpen}
+          onClick={() => {
+            setFilterOpen(true);
+          }}
+        >
+          Filter
+        </button>
+      </div>
+      {filterOpen ? (
+        <label className="recent-notes-filter" htmlFor="recent-notes-filter">
+          <span>Filter recent notes</span>
+          <input
+            ref={filterInputRef}
+            id="recent-notes-filter"
+            type="search"
+            value={filterQuery}
+            onChange={(event) => {
+              setFilterQuery(event.currentTarget.value);
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== 'Escape') {
+                return;
+              }
+
+              event.preventDefault();
+              event.stopPropagation();
+
+              if (filterQuery !== '') {
+                setFilterQuery('');
+                return;
+              }
+
+              setFilterOpen(false);
+              filterButtonRef.current?.focus();
+            }}
+          />
+        </label>
+      ) : null}
       {activeState === undefined || activeState.status === 'loading' ? (
         <p className="status" role="status" aria-live="polite">
           Loading recent notes
@@ -750,7 +829,9 @@ function RecentOriginNotes({
       ) : activeState.status === 'error' ? (
         <div className="note-action-panel">
           <p className="session-alert" role="alert">
-            PagePerch could not load recent notes from this origin. Retry.
+            {isRoot
+              ? 'PagePerch could not load recent notes from this origin. Retry.'
+              : 'PagePerch could not load recent notes under this page. Retry.'}
           </p>
           <button type="button" onClick={retry}>
             Retry recent notes
@@ -786,11 +867,15 @@ function RecentOriginNotes({
           ) : null}
           {activeState.entries.length === 0 ? (
             <p className="recent-notes-empty" role="status">
-              No other saved notes on this origin yet.
+              {emptyMessage}
+            </p>
+          ) : visibleEntries?.length === 0 ? (
+            <p className="recent-notes-empty" role="status">
+              No recent notes match this filter.
             </p>
           ) : (
             <ul className="recent-notes-list">
-              {activeState.entries.map((entry) => {
+              {visibleEntries?.map((entry) => {
                 const title = recentNoteTitle(entry);
 
                 return (
@@ -1112,9 +1197,10 @@ function SessionArea({
             trustRemoteClaim={syncVisibility.trustRemoteClaim}
             Editor={Editor}
           />
-          {showRecentNotesOnOrigin && supported.identity.isRoot ? (
-            <RecentOriginNotes
+          {showRecentNotesOnOrigin ? (
+            <RecentNotes
               key={`recent:${supported.identity.pageKey}`}
+              isRoot={supported.identity.isRoot}
               pageKey={supported.identity.pageKey}
               pageOpener={pageOpener}
               retry={recentNotes.retry}

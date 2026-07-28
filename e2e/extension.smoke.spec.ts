@@ -1521,16 +1521,29 @@ test('tracks supported-tab navigation and preserves a local note through panel a
   }
 });
 
-test('refreshes the exact-origin root index from storage and opens only its canonical note tab', async () => {
+test('shows root and descendant recent notes, filters them by keyboard, preserves editor height, and opens a canonical note tab', async () => {
   const fixtureServer = await startFixtureServer({
     '/': 'PagePerch origin root',
     '/article?view=notes': 'Saved canonical article',
     '/subscription': 'Subscription article',
+    '/WordPress/wordpress-playground/pull/4095': 'Pull request parent',
+    '/WordPress/wordpress-playground/pull/4095/changes': 'Pull request changes',
+    '/WordPress/wordpress-playground/pull/4095/commits/one?diff=split':
+      'Pull request commit',
+    '/WordPress/wordpress-playground/pull/4095?view=files':
+      'Pull request query variant',
+    '/WordPress/wordpress-playground/pull/40950/changes':
+      'Similar pull request',
   });
   const rootUrl = `${fixtureServer.origin}/`;
   const canonicalNoteUrl = `${fixtureServer.origin}/article?view=notes`;
   const subscriptionNoteUrl = `${fixtureServer.origin}/subscription`;
   const unrelatedUrl = 'https://unrelated.test/article';
+  const parentUrl = `${fixtureServer.origin}/WordPress/wordpress-playground/pull/4095`;
+  const childUrl = `${parentUrl}/changes`;
+  const deepChildUrl = `${parentUrl}/commits/one?diff=split`;
+  const samePathQueryUrl = `${parentUrl}?view=files`;
+  const boundaryCollisionUrl = `${fixtureServer.origin}/WordPress/wordpress-playground/pull/40950/changes`;
   const canonicalNote = storedNote(
     canonicalNoteUrl,
     'Saved canonical article',
@@ -1545,6 +1558,26 @@ test('refreshes the exact-origin root index from storage and opens only its cano
     subscriptionNoteUrl,
     'Subscription article',
     'Storage subscription note',
+  );
+  const childNote = storedNote(
+    childUrl,
+    'Pull request changes',
+    'Descendant changes note',
+  );
+  const deepChildNote = storedNote(
+    deepChildUrl,
+    'Pull request commit',
+    'Deep descendant note',
+  );
+  const samePathQueryNote = storedNote(
+    samePathQueryUrl,
+    'Pull request query variant',
+    'Same path query note',
+  );
+  const boundaryCollisionNote = storedNote(
+    boundaryCollisionUrl,
+    'Similar pull request',
+    'Boundary collision note',
   );
   const errors: CapturedRuntimeErrors = {
     consoleErrors: [],
@@ -1617,6 +1650,88 @@ test('refreshes the exact-origin root index from storage and opens only its cano
     ).toHaveCount(2);
     await expect(panelPage.getByText(unrelatedNote.title)).toHaveCount(0);
 
+    await seedStoredNotes(launchedSession.serviceWorker, [
+      canonicalNote,
+      subscriptionNote,
+      childNote,
+      deepChildNote,
+      samePathQueryNote,
+      boundaryCollisionNote,
+      unrelatedNote,
+    ]);
+    await launchedSession.page.goto(parentUrl);
+    await activateTabForUrl(launchedSession.serviceWorker, parentUrl);
+    await expectSimplifiedEditorReady(
+      panelPage,
+      parentUrl,
+      'Pull request parent',
+    );
+    await expect(
+      panelPage.getByRole('heading', {
+        level: 2,
+        name: 'Recent notes under this page',
+      }),
+    ).toBeVisible();
+    await expect(
+      panelPage.getByRole('heading', {
+        level: 3,
+        name: childNote.title,
+      }),
+    ).toBeVisible();
+    await expect(
+      panelPage.getByRole('heading', {
+        level: 3,
+        name: deepChildNote.title,
+      }),
+    ).toBeVisible();
+    await expect(
+      panelPage.locator('.recent-notes-list > .recent-note-item'),
+    ).toHaveCount(2);
+    await expect(panelPage.getByText(samePathQueryNote.title)).toHaveCount(0);
+    await expect(panelPage.getByText(boundaryCollisionNote.title)).toHaveCount(
+      0,
+    );
+    expect(
+      await panelPage
+        .locator('.page-note-editor')
+        .evaluate(
+          (editorElement) => editorElement.getBoundingClientRect().height,
+        ),
+    ).toBeGreaterThanOrEqual(400);
+
+    const filterButton = panelPage.getByRole('button', { name: 'Filter' });
+    await filterButton.click();
+    const filterInput = panelPage.getByRole('searchbox', {
+      name: 'Filter recent notes',
+    });
+    await expect(filterInput).toBeFocused();
+    await filterInput.fill('COMMIT');
+    await expect(
+      panelPage.getByRole('heading', {
+        level: 3,
+        name: deepChildNote.title,
+      }),
+    ).toBeVisible();
+    await expect(
+      panelPage.getByRole('heading', { level: 3, name: childNote.title }),
+    ).toHaveCount(0);
+    await filterInput.press('Escape');
+    await expect(filterInput).toHaveValue('');
+    await expect(filterInput).toBeFocused();
+    await expect(
+      panelPage.getByRole('heading', { level: 3, name: childNote.title }),
+    ).toBeVisible();
+    await filterInput.fill('no matching note');
+    await expect(
+      panelPage.getByText('No recent notes match this filter.', {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await filterInput.press('Escape');
+    await filterInput.press('Escape');
+    await expect(filterInput).toHaveCount(0);
+    await expect(filterButton).toBeFocused();
+
     const knownTabIds = await launchedSession.serviceWorker.evaluate(async () =>
       (await chrome.tabs.query({})).flatMap((tab) =>
         tab.id === undefined ? [] : [tab.id],
@@ -1625,11 +1740,11 @@ test('refreshes the exact-origin root index from storage and opens only its cano
     const openedPagePromise = launchedSession.context.waitForEvent('page');
     await panelPage
       .getByRole('button', {
-        name: `Open ${canonicalNote.title} in new tab`,
+        name: `Open ${childNote.title} in new tab`,
       })
       .click();
     const openedPage = await openedPagePromise;
-    await openedPage.waitForURL(canonicalNoteUrl);
+    await openedPage.waitForURL(childUrl);
 
     await expect
       .poll(() =>
@@ -1647,14 +1762,14 @@ test('refreshes the exact-origin root index from storage and opens only its cano
           knownTabIds,
         ),
       )
-      .toEqual([{ active: true, url: canonicalNoteUrl }]);
+      .toEqual([{ active: true, url: childUrl }]);
 
     const [activeTab] = await launchedSession.serviceWorker.evaluate(async () =>
       (await chrome.tabs.query({ active: true, currentWindow: true })).map(
         (tab) => ({ id: tab.id, url: tab.url }),
       ),
     );
-    expect(activeTab?.url).toBe(canonicalNoteUrl);
+    expect(activeTab?.url).toBe(childUrl);
     const openedUrl = new URL(activeTab?.url ?? '');
     expect(['http:', 'https:']).toContain(openedUrl.protocol);
     expect(openedUrl.username).toBe('');

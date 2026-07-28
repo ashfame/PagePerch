@@ -350,6 +350,54 @@ button.settings-link:hover {
   margin-bottom: 1rem;
 }
 
+.recent-notes-heading-row {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.surface .recent-notes-heading-row h2 {
+  margin: 0;
+}
+
+button.recent-notes-filter-link {
+  min-height: auto;
+  margin-inline-start: auto;
+  padding: 0.25rem 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--brand-strong);
+  background: transparent;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+button.recent-notes-filter-link:hover {
+  border-color: transparent;
+  color: var(--brand);
+  background: transparent;
+}
+
+.recent-notes-filter {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.recent-notes-filter input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+}
+
 .recent-notes-refresh {
   margin: 0 0 1rem;
 }

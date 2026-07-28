@@ -9,7 +9,7 @@ PagePerch is a private, offline-first Chrome side-panel extension for keeping on
 - Opens from the Chrome toolbar and follows the active HTTP or HTTPS tab.
 - Gives every canonical page its own autosaving block-editor document.
 - Converts pasted semantic HTML into supported Gutenberg blocks while retaining safe headings, lists, quotes, code, emphasis, and links.
-- Can show an opt-in recent-note index on an exact-origin root page such as `https://example.com/`.
+- Can show an opt-in recent-note index under every page, with all same-origin notes available from the origin root.
 - Offers text-focused blocks or a paragraphs-only editor mode.
 - Shows the installed extension version on the settings page.
 - Follows the browser or operating-system light/dark preference automatically.
@@ -114,13 +114,13 @@ Open PagePerch settings from the side panel or Chrome's extension menu to choose
 
 - **Text-focused blocks** for paragraphs, headings, lists, quotes, code, preformatted text, separators, inline formatting, and links.
 - **Paragraphs only** for paragraph blocks, inline formatting, links, undo, and redo.
-- **Show recent notes on root pages** to display other saved notes from the same exact origin; this is off by default.
+- **Show recent notes under pages** to display saved descendant notes below each page and all same-origin notes on an origin root; this is off by default.
 
 The settings header shows the exact installed extension version reported by Chrome.
 
 Media, embeds, reusable blocks, remote WordPress APIs, code editing, fullscreen, preview, and unrelated Gutenberg panels are disabled.
 
-When **Show recent notes on root pages** is enabled, an exact-origin root page shows its editable note followed by the most recently saved non-root notes for that exact origin. Selecting an entry opens its canonical HTTP or HTTPS URL in a new tab. When the setting is off, PagePerch does not connect to or query the recent-note index.
+When **Show recent notes under pages** is enabled, every supported page shows its editable note followed by saved notes on true descendant paths. For example, a note on `/WordPress/wordpress-playground/pull/4095/changes` appears under `/WordPress/wordpress-playground/pull/4095`, while `/pull/40950` does not. The exact-origin root lists all other saved notes on that origin. The Filter link narrows the visible list by title or canonical path/query without reading storage again; Escape first clears an active filter and then closes the input. Selecting an entry opens its canonical HTTP or HTTPS URL in a new tab. When the setting is off, PagePerch does not connect to or query the recent-note index.
 
 ## Why a service worker exists
 
@@ -196,7 +196,7 @@ npm run test:e2e
 npm run release:package
 ```
 
-Set `PAGEPERCH_HEADFUL=1` when running `npm run test:e2e` to display Chromium. The Playwright suite exercises the packaged worker and options page with its runtime version, rendered narrow and wide writing-column insets, short-note viewport fill with visible status, three distinct blank-canvas click-to-focus-before-type positions with persistence/reload, paragraph/heading/list editing and undo, content-driven growth without a nested scrollbar, absence of the two corrected WordPress deprecations, genuine trusted HTML copy/paste with partial-selection and nested-list coverage, safe persistence across panel reload and browser restart, and the default-off then opted-in root recent-note index. It intentionally avoids assertions tied to CSS selector text or exact presentation properties. The native toolbar-to-side-panel host click and visual theme/focus/contrast acceptance remain manual checks because Playwright cannot operate Chrome's browser toolbar and those checks require human visual judgment.
+Set `PAGEPERCH_HEADFUL=1` when running `npm run test:e2e` to display Chromium. The Playwright suite exercises the packaged worker and options page with its runtime version, rendered narrow and wide writing-column insets, short-note viewport fill with visible status, three distinct blank-canvas click-to-focus-before-type positions with persistence/reload, paragraph/heading/list editing and undo, content-driven growth without a nested scrollbar, absence of the two corrected WordPress deprecation messages, genuine trusted HTML copy/paste with partial-selection and nested-list coverage, safe persistence across panel reload and browser restart, and the default-off then opted-in hierarchical recent-note index with client filtering. It intentionally avoids assertions tied to CSS selector text or exact presentation properties. The native toolbar-to-side-panel host click and visual theme/focus/contrast acceptance remain manual checks because Playwright cannot operate Chrome's browser toolbar and those checks require human visual judgment.
 
 Automated tests never use live BYOS credentials. OAuth, temporary credentials, SigV4/path-style S3 transport, reconciliation, failures, expiry, and retries use controlled mocks; live consent and remote storage remain manual acceptance checks.
 
@@ -207,8 +207,8 @@ Before a release candidate:
 - Load `dist/` in Chrome 114 or newer and verify the toolbar action opens the native side panel.
 - Edit notes on two HTTP/HTTPS pages, wait for **Saved locally**, reload the panel, restart Chrome, and confirm both notes remain.
 - Navigate and switch active tabs while editing and confirm the pending note is saved before PagePerch changes documents.
-- Enable **Show recent notes on root pages**, clear a saved note, and confirm it disappears from the root recent-note index.
-- With **Show recent notes on root pages** enabled, verify the exact-origin root index excludes another scheme, subdomain, port, and origin and opens the chosen canonical page in one new tab.
+- Enable **Show recent notes under pages**, clear a saved descendant note, and confirm it disappears from its parent page and the origin-root recent-note indexes.
+- With **Show recent notes under pages** enabled, verify a parent page lists true descendant paths but not same-path query variants, similarly prefixed siblings, another scheme, subdomain, port, or origin; verify Filter focus and two-stage Escape, then open one canonical page in a new tab.
 - Add an exact-origin exclusion that collapses multiple noted URLs and confirm the resulting document stacks each note oldest-to-newest under its `Source: <original URL>` heading.
 - Remove the exclusion and confirm the combined document moves without content loss.
 - Verify both editor modes, keyboard navigation, visible focus, a narrow side panel, reduced motion, and live operating-system light/dark changes.

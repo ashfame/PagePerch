@@ -652,10 +652,10 @@ export function OptionsApp({ dependencies }: OptionsAppProps) {
                 }}
               />
               <span>
-                <strong>Show recent notes on root pages</strong>
+                <strong>Show recent notes under pages</strong>
                 <small>
-                  Display other saved notes from the same origin when its root
-                  page is open.
+                  Display saved descendant notes under every page and all
+                  same-origin notes on its root page.
                 </small>
               </span>
             </label>

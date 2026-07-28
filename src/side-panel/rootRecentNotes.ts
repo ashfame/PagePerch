@@ -46,13 +46,15 @@ export interface RootRecentNotesIndex {
   ): RootRecentNotesConnection;
 }
 
-interface RootContext {
+interface RecentNotesContext {
+  readonly isRoot: boolean;
   readonly origin: string;
   readonly pageKey: string;
+  readonly pathname: string;
 }
 
 interface LoadCycle {
-  readonly context: RootContext;
+  readonly context: RecentNotesContext;
   completedRevision: number;
   entries: readonly RootRecentNoteEntry[] | undefined;
   requestedRevision: number;
@@ -62,36 +64,93 @@ interface LoadCycle {
   unsubscribe: (() => void) | undefined;
 }
 
-function rootContext(
+function recentNotesContext(
   session: SupportedActivePageSessionState | undefined,
-): RootContext | undefined {
-  if (session === undefined || !session.identity.isRoot) {
+): RecentNotesContext | undefined {
+  if (session === undefined) {
+    return undefined;
+  }
+
+  let canonicalUrl: URL;
+
+  try {
+    canonicalUrl = new URL(session.identity.canonicalUrl);
+  } catch {
+    return undefined;
+  }
+
+  if (
+    (canonicalUrl.protocol !== 'http:' && canonicalUrl.protocol !== 'https:') ||
+    canonicalUrl.origin !== session.identity.origin
+  ) {
     return undefined;
   }
 
   return {
+    isRoot: session.identity.isRoot,
     origin: session.identity.origin,
     pageKey: session.identity.pageKey,
+    pathname: canonicalUrl.pathname,
   };
 }
 
-function sameRoot(
-  left: RootContext | undefined,
-  right: RootContext | undefined,
+function sameContext(
+  left: RecentNotesContext | undefined,
+  right: RecentNotesContext | undefined,
 ): boolean {
-  return left?.origin === right?.origin && left?.pageKey === right?.pageKey;
+  return (
+    left?.isRoot === right?.isRoot &&
+    left?.origin === right?.origin &&
+    left?.pageKey === right?.pageKey &&
+    left?.pathname === right?.pathname
+  );
 }
 
 function immutableEntries(
   records: readonly NoteRecordV1[],
-  rootPageKey: string,
+  context: RecentNotesContext,
 ): readonly RootRecentNoteEntry[] {
   return Object.freeze(
     records
-      .filter(
-        (record) =>
-          record.deletedAt === undefined && record.pageKey !== rootPageKey,
-      )
+      .filter((record) => {
+        if (
+          record.deletedAt !== undefined ||
+          record.pageKey === context.pageKey ||
+          record.origin !== context.origin
+        ) {
+          return false;
+        }
+
+        let canonicalUrl: URL;
+
+        try {
+          canonicalUrl = new URL(record.canonicalUrl);
+        } catch {
+          return false;
+        }
+
+        if (
+          (canonicalUrl.protocol !== 'http:' &&
+            canonicalUrl.protocol !== 'https:') ||
+          canonicalUrl.origin !== context.origin
+        ) {
+          return false;
+        }
+
+        if (context.isRoot) {
+          return true;
+        }
+
+        if (canonicalUrl.pathname === context.pathname) {
+          return false;
+        }
+
+        const descendantPrefix = context.pathname.endsWith('/')
+          ? context.pathname
+          : `${context.pathname}/`;
+
+        return canonicalUrl.pathname.startsWith(descendantPrefix);
+      })
       .map((record) =>
         Object.freeze({
           canonicalUrl: record.canonicalUrl,
@@ -134,7 +193,7 @@ export class DefaultRootRecentNotesIndex implements RootRecentNotesIndex {
 
           this.#currentConnectionId = undefined;
           this.#emitState = undefined;
-          this.#setRoot(undefined);
+          this.#setContext(undefined);
         });
       },
       retry: () => {
@@ -158,13 +217,13 @@ export class DefaultRootRecentNotesIndex implements RootRecentNotesIndex {
           return;
         }
 
-        this.#setRoot(rootContext(session));
+        this.#setContext(recentNotesContext(session));
       },
     };
   }
 
-  #setRoot(context: RootContext | undefined): void {
-    if (sameRoot(this.#cycle?.context, context)) {
+  #setContext(context: RecentNotesContext | undefined): void {
+    if (sameContext(this.#cycle?.context, context)) {
       return;
     }
 
@@ -304,7 +363,7 @@ export class DefaultRootRecentNotesIndex implements RootRecentNotesIndex {
         }
 
         try {
-          cycle.entries = immutableEntries(records, cycle.context.pageKey);
+          cycle.entries = immutableEntries(records, cycle.context);
         } catch {
           this.#publishLoadFailure(cycle);
           continue;
