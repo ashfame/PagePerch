@@ -4,7 +4,13 @@
 
 - Implement the Chrome 114+ Manifest V3 side-panel extension described by `plan.md` and `byos_integrations.md`.
 - Treat `docs/ORCHESTRATOR_STATE.md`, `docs/TASK_BACKLOG.md`, `docs/ROADMAP.md`, and `docs/COMPLIANCE_MATRIX.md` as the durable implementation state.
-- Keep all work on the dedicated `feat/chrome-notes` branch in `/home/ashfame/git-worktrees/pageperch-chrome-notes`; do not modify the primary checkout.
+- This repository is explicitly exempt from the dedicated-worktree rules in `~/.codex/AGENTS.md`: work directly in the primary checkout at `/home/ashfame/git/pageperch`, commit directly to the primary `trunk` branch, and do not create a task branch or dedicated worktree unless the user explicitly requests one.
+
+## Release Approval Workflow
+
+- For every product change, assign the prospective next `0.1.x` version, run the complete gate, and commit the exact candidate locally on `trunk` before packaging it.
+- Build the manual-test ZIP from that exact committed state and give the user its local download link and SHA-256 checksum; do not create a tag or push the commit, branch, or tag before the user explicitly approves the candidate.
+- If the user requests changes, make another local commit and regenerate the candidate ZIP; only after explicit approval create the annotated `v0.1.x` minor-update tag on the exact approved commit and atomically push `trunk` and the tag.
 
 ## Repository Conventions
 
