@@ -119,3 +119,9 @@ Keep the recent-note section from shrinking while active filtering reduces its v
 Status: completed.
 
 Bind the accepted filter-layout and visible-count implementation to version `0.1.8`, run the complete release and deterministic packaging gates, and publish the standing annotated minor-update tag without rewriting prior releases.
+
+## M20 — Trunk and Approval-Gated Release Workflow
+
+Status: completed.
+
+Rename the repository's sole default branch to `trunk` without rewriting history, move ongoing work into the primary checkout under a repository-specific exemption from global worktree rules, and require each future product candidate to be committed and packaged locally for manual approval before its exact commit is tagged and pushed.

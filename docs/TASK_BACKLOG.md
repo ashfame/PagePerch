@@ -296,3 +296,14 @@
 - Suggested files: Version metadata, README, release evidence, orchestration state
 - Test expectations: Complete `npm run check`, repeated deterministic `npm run release:package`, strict checksum/ZIP/version verification, clean source/tag verification, and green branch/tag CI
 - Notes: The accepted PP-024 implementation is committed as `39001b6`. Package, both lockfile version fields, source manifest, runtime settings display, and README agree at `0.1.8`. The complete 975-case build/audit/browser gate passes with seven runnable Chromium scenarios and no skips. Two packaging runs produced the identical 5,071,538-byte archive with SHA-256 `98d0cb3363192b2408f5b96c0578cf2ef7bca2f67b1439b49b1312146390e03a`; strict checksum verification, ZIP integrity, exact 16-entry archive content, and embedded manifest inspection pass. The release commit and annotated `v0.1.8` tag are pushed without rewriting prior releases.
+
+## PP-026 — Adopt Trunk and Approval-Gated Releases
+
+- Status: completed
+- Priority: P0
+- Dependencies: PP-025
+- Spec or plan references: User repository-workflow direction on 2026-07-29
+- Acceptance criteria: Repository-local instructions explicitly exempt PagePerch from the global dedicated-worktree rule and direct work to the primary `trunk` checkout; candidate product changes are versioned, fully tested, committed locally, and packaged from that exact commit before manual acceptance; no candidate commit, branch, or tag is pushed before explicit approval; GitHub's sole default branch is `trunk`; the former task worktree is retired without losing untracked source inputs or generated release artifacts; commit history and existing tags are unchanged.
+- Suggested files: `AGENTS.md`, durable orchestration state, local and GitHub branch references
+- Test expectations: Markdown diff check; local worktree, upstream, remote-head, default-branch, commit-ancestry, and tag verification
+- Notes: Repository-local workflow rules were committed as `556e44c` before GitHub's native branch rename changed `feat/chrome-notes` to `trunk`. The local branch and primary checkout now track `origin/trunk`; the old task worktree is removed; generated release artifacts are retained in the primary checkout. The old primary checkout's two untracked files were byte-identical to their tracked `trunk` blobs and are additionally preserved at `/home/ashfame/git-worktrees/pageperch-trunk-migration-drKvrM/primary-untracked`. No history or tag was rewritten.
