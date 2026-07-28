@@ -116,6 +116,6 @@ Keep the recent-note section from shrinking while active filtering reduces its v
 
 ## M19 — 0.1.8 Minor Update
 
-Status: in progress.
+Status: completed.
 
 Bind the accepted filter-layout and visible-count implementation to version `0.1.8`, run the complete release and deterministic packaging gates, and publish the standing annotated minor-update tag without rewriting prior releases.
