@@ -110,6 +110,12 @@ Bind the accepted hierarchical recent-note implementation to version `0.1.7`, ru
 
 ## M18 — Stabilize Filter Layout and Show Result Count
 
-Status: pending implementation after the `v0.1.7` publication boundary.
+Status: completed and manually accepted.
 
-Keep the recent-note section from shrinking while active filtering reduces its visible entries, so the focused filter input remains visually stable, and suffix the context-specific heading with the number of currently visible notes. Deliver this as a separately reviewed uncommitted manual-test candidate after `v0.1.7`.
+Keep the recent-note section from shrinking while active filtering reduces its visible entries, so the focused filter input remains visually stable, and suffix the context-specific heading with the number of currently visible notes. The user accepted the deterministic manual-test candidate on 2026-07-29.
+
+## M19 — 0.1.8 Minor Update
+
+Status: in progress.
+
+Bind the accepted filter-layout and visible-count implementation to version `0.1.8`, run the complete release and deterministic packaging gates, and publish the standing annotated minor-update tag without rewriting prior releases.

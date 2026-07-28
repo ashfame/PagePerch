@@ -51,6 +51,28 @@ interface FixtureServer {
   readonly origin: string;
 }
 
+interface RecentNotesFilterLayout {
+  readonly inputTop: number;
+  readonly sectionHeight: number;
+}
+
+async function recentNotesFilterLayout(
+  filterInput: Locator,
+): Promise<RecentNotesFilterLayout> {
+  return filterInput.evaluate((inputElement) => {
+    const section = inputElement.closest('section');
+
+    if (section === null) {
+      throw new Error('Expected the recent-note section.');
+    }
+
+    return {
+      inputTop: inputElement.getBoundingClientRect().top,
+      sectionHeight: section.getBoundingClientRect().height,
+    };
+  });
+}
+
 function normalizeError(error: unknown, fallbackMessage: string): Error {
   return error instanceof Error
     ? error
@@ -1620,7 +1642,7 @@ test('shows root and descendant recent notes, filters them by keyboard, preserve
     await expect(
       panelPage.getByRole('heading', {
         level: 2,
-        name: 'Recent notes on this origin',
+        name: 'Recent notes on this origin (1)',
       }),
     ).toBeVisible();
     await expect(
@@ -1648,6 +1670,12 @@ test('shows root and descendant recent notes, filters them by keyboard, preserve
     await expect(
       panelPage.locator('.recent-notes-list > .recent-note-item'),
     ).toHaveCount(2);
+    await expect(
+      panelPage.getByRole('heading', {
+        level: 2,
+        name: 'Recent notes on this origin (2)',
+      }),
+    ).toBeVisible();
     await expect(panelPage.getByText(unrelatedNote.title)).toHaveCount(0);
 
     await seedStoredNotes(launchedSession.serviceWorker, [
@@ -1669,7 +1697,7 @@ test('shows root and descendant recent notes, filters them by keyboard, preserve
     await expect(
       panelPage.getByRole('heading', {
         level: 2,
-        name: 'Recent notes under this page',
+        name: 'Recent notes under this page (2)',
       }),
     ).toBeVisible();
     await expect(
@@ -1705,7 +1733,14 @@ test('shows root and descendant recent notes, filters them by keyboard, preserve
       name: 'Filter recent notes',
     });
     await expect(filterInput).toBeFocused();
+    const unfilteredLayout = await recentNotesFilterLayout(filterInput);
     await filterInput.fill('COMMIT');
+    await expect(
+      panelPage.getByRole('heading', {
+        level: 2,
+        name: 'Recent notes under this page (1)',
+      }),
+    ).toBeVisible();
     await expect(
       panelPage.getByRole('heading', {
         level: 3,
@@ -1715,11 +1750,20 @@ test('shows root and descendant recent notes, filters them by keyboard, preserve
     await expect(
       panelPage.getByRole('heading', { level: 3, name: childNote.title }),
     ).toHaveCount(0);
+    await expect
+      .poll(() => recentNotesFilterLayout(filterInput))
+      .toEqual(unfilteredLayout);
     await filterInput.press('Escape');
     await expect(filterInput).toHaveValue('');
     await expect(filterInput).toBeFocused();
     await expect(
       panelPage.getByRole('heading', { level: 3, name: childNote.title }),
+    ).toBeVisible();
+    await expect(
+      panelPage.getByRole('heading', {
+        level: 2,
+        name: 'Recent notes under this page (2)',
+      }),
     ).toBeVisible();
     await filterInput.fill('no matching note');
     await expect(
@@ -1727,6 +1771,15 @@ test('shows root and descendant recent notes, filters them by keyboard, preserve
         exact: true,
       }),
     ).toBeVisible();
+    await expect(
+      panelPage.getByRole('heading', {
+        level: 2,
+        name: 'Recent notes under this page (0)',
+      }),
+    ).toBeVisible();
+    await expect
+      .poll(() => recentNotesFilterLayout(filterInput))
+      .toEqual(unfilteredLayout);
     await filterInput.press('Escape');
     await filterInput.press('Escape');
     await expect(filterInput).toHaveCount(0);

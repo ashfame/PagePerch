@@ -120,7 +120,7 @@ The settings header shows the exact installed extension version reported by Chro
 
 Media, embeds, reusable blocks, remote WordPress APIs, code editing, fullscreen, preview, and unrelated Gutenberg panels are disabled.
 
-When **Show recent notes under pages** is enabled, every supported page shows its editable note followed by saved notes on true descendant paths. For example, a note on `/WordPress/wordpress-playground/pull/4095/changes` appears under `/WordPress/wordpress-playground/pull/4095`, while `/pull/40950` does not. The exact-origin root lists all other saved notes on that origin. The Filter link narrows the visible list by title or canonical path/query without reading storage again; Escape first clears an active filter and then closes the input. Selecting an entry opens its canonical HTTP or HTTPS URL in a new tab. When the setting is off, PagePerch does not connect to or query the recent-note index.
+When **Show recent notes under pages** is enabled, every supported page shows its editable note followed by saved notes on true descendant paths. For example, a note on `/WordPress/wordpress-playground/pull/4095/changes` appears under `/WordPress/wordpress-playground/pull/4095`, while `/pull/40950` does not. The exact-origin root lists all other saved notes on that origin. The heading counts the currently visible notes. The Filter link narrows the visible list by title or canonical path/query without reading storage again and keeps the open section stable as results disappear; Escape first clears an active filter and then closes the input. Selecting an entry opens its canonical HTTP or HTTPS URL in a new tab. When the setting is off, PagePerch does not connect to or query the recent-note index.
 
 ## Why a service worker exists
 

@@ -1504,6 +1504,12 @@ describe('SidePanelApp recent origin notes', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(
       'could not load recent notes under this page',
     );
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'Recent notes under this page',
+      }),
+    ).toBeInTheDocument();
     act(() => {
       recentIndex.emit({
         entries: [],
@@ -1517,6 +1523,12 @@ describe('SidePanelApp recent origin notes', () => {
     expect(
       screen.getByText('No saved notes under this page yet.'),
     ).toHaveAttribute('role', 'status');
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'Recent notes under this page (0)',
+      }),
+    ).toBeInTheDocument();
 
     const root = rootSupportedSession();
     emit(controller, root);
@@ -1561,6 +1573,12 @@ describe('SidePanelApp recent origin notes', () => {
     expect(
       screen.getByText('No other saved notes on this origin yet.'),
     ).toHaveAttribute('role', 'status');
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'Recent notes on this origin (0)',
+      }),
+    ).toBeInTheDocument();
 
     const savedAt = '2026-07-25T08:00:00.000Z';
     act(() => {
@@ -1589,6 +1607,12 @@ describe('SidePanelApp recent origin notes', () => {
 
     expect(screen.getByRole('list')).toBeInTheDocument();
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'Recent notes on this origin (2)',
+      }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole('heading', { level: 3, name: 'Saved article' }),
     ).toBeInTheDocument();
@@ -1650,6 +1674,12 @@ describe('SidePanelApp recent origin notes', () => {
       });
     });
 
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'Recent notes under this page (2)',
+      }),
+    ).toBeInTheDocument();
     const filterButton = screen.getByRole('button', { name: 'Filter' });
     await user.click(filterButton);
     const filterInput = screen.getByRole('searchbox', {
@@ -1658,6 +1688,12 @@ describe('SidePanelApp recent origin notes', () => {
     expect(filterInput).toHaveFocus();
 
     await user.type(filterInput, 'CHANGES?VIEW');
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'Recent notes under this page (1)',
+      }),
+    ).toBeInTheDocument();
     expect(screen.getByText('Pull request changes')).toBeInTheDocument();
     expect(screen.queryByText('Commit history')).not.toBeInTheDocument();
 
@@ -1666,12 +1702,24 @@ describe('SidePanelApp recent origin notes', () => {
     expect(screen.getByRole('status')).toHaveTextContent(
       'No recent notes match this filter.',
     );
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'Recent notes under this page (0)',
+      }),
+    ).toBeInTheDocument();
 
     await user.keyboard('{Escape}');
     expect(filterInput).toHaveValue('');
     expect(filterInput).toHaveFocus();
     expect(screen.getByText('Pull request changes')).toBeInTheDocument();
     expect(screen.getByText('Commit history')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'Recent notes under this page (2)',
+      }),
+    ).toBeInTheDocument();
 
     await user.keyboard('{Escape}');
     expect(
@@ -1764,6 +1812,12 @@ describe('SidePanelApp recent origin notes', () => {
     });
 
     expect(screen.getByText('Retained note')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'Recent notes on this origin (1)',
+      }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Previously loaded notes are still shown',
     );
@@ -1788,6 +1842,12 @@ describe('SidePanelApp recent origin notes', () => {
     });
 
     expect(screen.getByText('Retained note')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'Recent notes on this origin (1)',
+      }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent(
       'cannot update automatically',
     );

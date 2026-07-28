@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -708,7 +709,9 @@ function RecentNotes({
   const actionLifecycleRef = useRef({ attempt: 0, mounted: true });
   const filterButtonRef = useRef<HTMLButtonElement>(null);
   const filterInputRef = useRef<HTMLInputElement>(null);
-  const heading = isRoot
+  const filterMinimumHeightRef = useRef<number>();
+  const sectionRef = useRef<HTMLElement>(null);
+  const baseHeading = isRoot
     ? 'Recent notes on this origin'
     : 'Recent notes under this page';
   const emptyMessage = isRoot
@@ -731,12 +734,38 @@ function RecentNotes({
             context.includes(normalizedFilter)
           );
         });
+  const heading =
+    visibleEntries === undefined
+      ? baseHeading
+      : `${baseHeading} (${visibleEntries.length})`;
 
   useEffect(() => {
     if (filterOpen) {
       filterInputRef.current?.focus();
     }
   }, [filterOpen]);
+
+  useLayoutEffect(() => {
+    const section = sectionRef.current;
+
+    if (!filterOpen) {
+      filterMinimumHeightRef.current = undefined;
+      section?.style.removeProperty('min-height');
+      return;
+    }
+
+    if (filterQuery !== '' || entries === undefined || section === null) {
+      return;
+    }
+
+    const sectionHeight = section.getBoundingClientRect().height;
+    const minimumHeight = Math.max(
+      filterMinimumHeightRef.current ?? 0,
+      sectionHeight,
+    );
+    filterMinimumHeightRef.current = minimumHeight;
+    section.style.minHeight = `${String(minimumHeight)}px`;
+  }, [entries, filterOpen, filterQuery]);
 
   useEffect(() => {
     const lifecycle = actionLifecycleRef.current;
@@ -774,6 +803,7 @@ function RecentNotes({
 
   return (
     <section
+      ref={sectionRef}
       className="surface recent-notes-surface"
       aria-labelledby="recent-notes-heading"
     >

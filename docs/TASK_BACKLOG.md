@@ -277,11 +277,22 @@
 
 ## PP-024 — Stabilize Recent-Note Filtering and Show Visible Count
 
-- Status: pending
+- Status: completed
 - Priority: P0
 - Dependencies: PP-023
 - Spec or plan references: User follow-up after accepting PP-022
 - Acceptance criteria: Opening and using the recent-note filter preserves at least the section height captured with the complete unfiltered list so result removal does not move the focused input in the viewport; closing or navigating releases the reservation; the context-specific heading suffix shows the number of currently visible notes, including zero for a no-match filter; loading and error states do not invent a count; accessibility and two-stage Escape remain intact.
 - Suggested files: `src/side-panel/App.tsx`, panel styles if needed, component tests, packaged Chromium coverage, README, and durable project state
 - Test expectations: Behavior-focused component coverage for full/filtered/zero counts and reset; real rendered-browser evidence that section height and input position remain stable while results shrink; focused and complete gates; uncommitted audited manual-test ZIP
-- Notes: Implement only after `v0.1.7` is committed, pushed, and tagged; present as a separate uncommitted candidate for user review.
+- Notes: `v0.1.7` was committed, pushed, and tagged before PP-024 began. One bounded worker implemented ready-state visible counts and a rendered unfiltered section-height reservation without fixed guessed heights, nested scrolling, persistence, or BYOS changes. Component coverage proves uncounted loading/error headings plus full, filtered, zero, empty, and retained-error ready counts. Real Chromium proves section height and focused input viewport position remain unchanged when two results shrink to one and zero. One independent reviewer approved the four-file uncommitted diff with no blockers; the complete 975-case and seven-browser gate passes. Two deterministic packaging runs produced the identical 5,071,538-byte `.release/pageperch-0.1.7.zip` candidate with SHA-256 `c0b5ca6c9f15b7d6e675fdbff34c209227eba177e6a4fa90540f90c5edc31042`, a matching strict sidecar, valid ZIP structure, exactly 16 entries, and embedded manifest version `0.1.7`. The user manually accepted the candidate on 2026-07-29 and authorized the implementation commit and next minor tag.
+
+## PP-025 — Cut the 0.1.8 Minor Update
+
+- Status: in progress
+- Priority: P0
+- Dependencies: PP-024
+- Spec or plan references: User acceptance on 2026-07-29 and standing minor-update tag convention
+- Acceptance criteria: Package, lockfile, source manifest, runtime settings display, and README commands agree at `0.1.8`; the complete release gate passes; one deterministic `pageperch-0.1.8.zip` plus matching strict checksum is produced twice identically; the accepted source commit is followed by an atomic release commit annotated with `v0.1.8`; both commits and the tag are pushed without rewriting prior releases.
+- Suggested files: Version metadata, README, release evidence, orchestration state
+- Test expectations: Complete `npm run check`, repeated deterministic `npm run release:package`, strict checksum/ZIP/version verification, clean source/tag verification, and green branch/tag CI
+- Notes: Pending the accepted PP-024 implementation commit and final release evidence.
