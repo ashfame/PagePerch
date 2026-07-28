@@ -266,14 +266,14 @@
 
 ## PP-023 — Cut the 0.1.7 Minor Update
 
-- Status: pending
+- Status: completed
 - Priority: P0
 - Dependencies: PP-022
 - Spec or plan references: User acceptance on 2026-07-29 and standing minor-update tag convention
 - Acceptance criteria: Package, lockfile, source manifest, runtime settings display, and README commands agree at `0.1.7`; the complete release gate passes; one deterministic `pageperch-0.1.7.zip` plus matching strict checksum is produced twice identically; the accepted source commit is annotated with `v0.1.7` using the standing minor-update message and both commit and tag are pushed without rewriting prior releases.
 - Suggested files: Version metadata, README, release evidence, orchestration state
 - Test expectations: Complete `npm run check`, repeated deterministic `npm run release:package`, strict checksum/ZIP/version verification, clean source/tag verification, and green branch/tag CI
-- Notes: Main orchestrator owns accepted implementation commit, release metadata, package, tag, push, and verification.
+- Notes: The accepted PP-022 implementation is committed and pushed as `b220a3e`. Package, both lockfile version fields, source manifest, runtime settings display, and README agree at `0.1.7`. The complete 975-case build/audit/browser gate passes with seven runnable Chromium scenarios and no skips. Two packaging runs produced the identical 5,071,184-byte archive with SHA-256 `6e74c6201b8390e7614c7e23b7786fd86a48151d1420a0b2f524a4540c9f2de6`; strict checksum verification, ZIP integrity, exact 16-entry archive content, and embedded manifest inspection pass. The main orchestrator owns the final release commit, push, and annotated `v0.1.7` tag.
 
 ## PP-024 — Stabilize Recent-Note Filtering and Show Visible Count
 

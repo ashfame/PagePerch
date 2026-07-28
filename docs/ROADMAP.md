@@ -104,12 +104,12 @@ Expand the default-off recent-note index to every supported page, retain the exa
 
 ## M17 — 0.1.7 Minor Update
 
-Status: pending.
+Status: completed.
 
 Bind the accepted hierarchical recent-note implementation to version `0.1.7`, run the complete release and deterministic packaging gates, and publish the standing annotated minor-update tag without rewriting prior releases.
 
 ## M18 — Stabilize Filter Layout and Show Result Count
 
-Status: pending.
+Status: pending implementation after the `v0.1.7` publication boundary.
 
 Keep the recent-note section from shrinking while active filtering reduces its visible entries, so the focused filter input remains visually stable, and suffix the context-specific heading with the number of currently visible notes. Deliver this as a separately reviewed uncommitted manual-test candidate after `v0.1.7`.
