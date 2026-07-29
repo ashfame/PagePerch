@@ -3,7 +3,11 @@ import { resolve } from 'node:path';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
-import { GUTENBERG_SINGLETON_PACKAGES } from './src/build/gutenbergCompatibility';
+import {
+  GUTENBERG_SINGLETON_PACKAGES,
+  PAGEPERCH_GUTENBERG_PACKAGE_ALIASES,
+  pagePerchGutenbergCompatibilityPlugin,
+} from './src/build/gutenbergCompatibility';
 import { mv3CompatibilityPlugin } from './src/build/mv3Compatibility';
 
 const projectRoot = import.meta.dirname;
@@ -11,8 +15,13 @@ const projectRoot = import.meta.dirname;
 export default defineConfig({
   root: resolve(projectRoot, 'src'),
   publicDir: resolve(projectRoot, 'public'),
-  plugins: [mv3CompatibilityPlugin(), react()],
+  plugins: [
+    pagePerchGutenbergCompatibilityPlugin(),
+    mv3CompatibilityPlugin(),
+    react(),
+  ],
   resolve: {
+    alias: [...PAGEPERCH_GUTENBERG_PACKAGE_ALIASES],
     dedupe: [...GUTENBERG_SINGLETON_PACKAGES],
   },
   build: {

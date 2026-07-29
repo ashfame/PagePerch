@@ -266,30 +266,43 @@ describe('auditPackage', () => {
   });
 
   it.each([
-    ['hash line comment', '//# sourceMappingURL=hidden.map'],
-    ['at line comment', '//@ sourceMappingURL=hidden.map'],
-    ['hash block comment', '/*# sourceMappingURL=hidden.map */'],
-    ['at block comment', '/*@ sourceMappingURL=hidden.map */'],
+    ['external hash line comment', 'js', '//# sourceMappingURL=hidden.js.map'],
+    ['external at line comment', 'js', '//@ sourceMappingURL=hidden.js.map'],
+    [
+      'inline hash block comment',
+      'js',
+      '/*# sourceMappingURL=data:application/json;base64,e30= */',
+    ],
+    [
+      'external at CSS block comment',
+      'css',
+      '/*@ sourceMappingURL=hidden.css.map */',
+    ],
+    [
+      'inline hash CSS block comment',
+      'css',
+      '/*# sourceMappingURL=data:application/json;base64,e30= */',
+    ],
   ])(
     'detects a non-final source-map annotation in a %s',
-    async (_description, annotation) => {
+    async (_description, extension, annotation) => {
       const directory = await createFixture();
 
       await writeFile(
-        resolve(directory, 'assets/non-final.js'),
+        resolve(directory, `assets/non-final.${extension}`),
         `const before = true;\n${annotation}\nconst after = true;\n`,
       );
 
       const result = await auditPackage(directory);
 
       expect(result.violations).toContainEqual({
-        file: 'assets/non-final.js',
+        file: `assets/non-final.${extension}`,
         message: 'source map reference is present',
       });
     },
   );
 
-  it('ignores source-map annotation tokens inside string literals', async () => {
+  it('ignores source-map annotation tokens inside runtime string and template literals', async () => {
     const directory = await createFixture();
 
     await writeFile(
@@ -297,6 +310,8 @@ describe('auditPackage', () => {
       [
         'const lineMarker = "//# sourceMappingURL=inert-line.map";',
         "const blockMarker = '/*@ sourceMappingURL=inert-block.map */';",
+        'const templateLineMarker = `//# sourceMappingURL=inert-template-line.map`;',
+        'const templateBlockMarker = `/*# sourceMappingURL=data:application/json;base64,e30= */`;',
       ].join('\n'),
     );
 
@@ -304,6 +319,22 @@ describe('auditPackage', () => {
 
     expect(result.violations).not.toContainEqual({
       file: 'assets/inert-markers.js',
+      message: 'source map reference is present',
+    });
+  });
+
+  it('ignores source-map annotation tokens inside CSS string literals', async () => {
+    const directory = await createFixture();
+
+    await writeFile(
+      resolve(directory, 'assets/inert-markers.css'),
+      '.marker::before { content: "/*# sourceMappingURL=inert.css.map */"; }',
+    );
+
+    const result = await auditPackage(directory);
+
+    expect(result.violations).not.toContainEqual({
+      file: 'assets/inert-markers.css',
       message: 'source map reference is present',
     });
   });
@@ -320,6 +351,8 @@ describe('auditPackage', () => {
         'const templateExpression = `value ${{ nested: { okay: true } }.nested.okay}`;',
         'const nestedTemplate = `value ${`inner ${true}`}`;',
         'const protocol = /^\\\\w+:\\\\/\\\\//;',
+        'const annotationPattern = /\\\\/\\\\*\\\\s*# sourceMappingURL=/g;',
+        'const emittedAnnotation = `/*# sourceMappingURL=${"runtime-only.map"} */`;',
         '// ordinary comment',
         '/* ordinary block comment */',
       ].join('\n'),

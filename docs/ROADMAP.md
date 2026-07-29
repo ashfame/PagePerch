@@ -125,3 +125,9 @@ Bind the accepted filter-layout and visible-count implementation to version `0.1
 Status: completed.
 
 Rename the repository's sole default branch to `trunk` without rewriting history, move ongoing work into the primary checkout under a repository-specific exemption from global worktree rules, and require each future product candidate to be committed and packaged locally for manual approval before its exact commit is tagged and pushed.
+
+## M21 — Gutenberg Memory-Footprint Reduction
+
+Status: in progress.
+
+Reduce the side-panel editor's resource footprint in three independently measured and committed steps: register only PagePerch's supported blocks and formats, lazy-load the supported-page editor, and replace the complete isolated-editor stylesheet with an explicit minimal surface. Preserve editor behavior throughout, keep a direct `BlockEditorProvider` replacement deferred, and make no BYOS, synchronization, authentication, AWS/S3, or service-worker changes. Package the prospective `0.1.9` candidate locally for manual approval before any tag or push.

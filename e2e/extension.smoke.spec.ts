@@ -1088,7 +1088,14 @@ test('converts a trusted rich browser copy into semantic Gutenberg blocks and pe
     await expect(
       editor.getByText('Unsupported content was removed.'),
     ).toHaveCount(0);
-    await expect(editor.locator('strong')).toHaveText('trusted bold');
+    await expect(
+      editor.locator('strong').filter({ hasText: /^trusted bold$/u }),
+    ).toHaveText('trusted bold');
+    await expect(
+      editor
+        .locator('strong')
+        .filter({ hasText: /^Unsupported second cell$/u }),
+    ).toHaveText('Unsupported second cell');
     await expect(editor.locator('em')).toHaveText('trusted emphasis');
     await expect(editor.locator('mark')).toHaveText('trusted mark');
     await expect(editor.locator('kbd')).toHaveText('Ctrl+S');

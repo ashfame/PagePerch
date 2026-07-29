@@ -315,7 +315,93 @@ function isEscaped(contents: string, position: number): boolean {
   return backslashes % 2 === 1;
 }
 
-function hasSourceMapAnnotation(contents: string): boolean {
+function isRegularExpressionStart(contents: string, position: number): boolean {
+  let preceding = position - 1;
+
+  while (preceding >= 0 && /\s/u.test(contents[preceding] ?? '')) {
+    preceding -= 1;
+  }
+
+  if (preceding < 0) {
+    return true;
+  }
+
+  const previousCharacter = contents[preceding] ?? '';
+  if (/[[{(=,:;!?&|+\-*%^~<>]/u.test(previousCharacter)) {
+    return true;
+  }
+
+  if (!/[$\w]/u.test(previousCharacter)) {
+    return false;
+  }
+
+  const wordEnd = preceding + 1;
+  while (preceding >= 0 && /[$\w]/u.test(contents[preceding] ?? '')) {
+    preceding -= 1;
+  }
+
+  return new Set([
+    'await',
+    'case',
+    'delete',
+    'else',
+    'in',
+    'instanceof',
+    'of',
+    'return',
+    'throw',
+    'typeof',
+    'void',
+    'yield',
+  ]).has(contents.slice(preceding + 1, wordEnd));
+}
+
+function regularExpressionEnd(contents: string, position: number): number {
+  let insideCharacterClass = false;
+  let cursor = position + 1;
+
+  while (cursor < contents.length) {
+    const character = contents[cursor];
+
+    if (character === '\\') {
+      cursor += 2;
+      continue;
+    }
+
+    if (character === '\n' || character === '\r') {
+      return position + 1;
+    }
+
+    if (character === '[') {
+      insideCharacterClass = true;
+      cursor += 1;
+      continue;
+    }
+
+    if (character === ']') {
+      insideCharacterClass = false;
+      cursor += 1;
+      continue;
+    }
+
+    if (character === '/' && !insideCharacterClass) {
+      cursor += 1;
+      while (/[$\w]/u.test(contents[cursor] ?? '')) {
+        cursor += 1;
+      }
+      return cursor;
+    }
+
+    cursor += 1;
+  }
+
+  return position + 1;
+}
+
+function hasSourceMapAnnotation(
+  contents: string,
+  scanRegularExpressions: boolean,
+): boolean {
   type ScannerMode = 'code' | 'double-quoted' | 'single-quoted' | 'template';
 
   const templateExpressionDepths: number[] = [];
@@ -417,7 +503,7 @@ function hasSourceMapAnnotation(contents: string): boolean {
       const commentEnd = lineEnd === -1 ? contents.length : lineEnd;
 
       if (
-        /^[#@]\s*sourceMappingURL\s*=/u.test(
+        /^\s*[#@]\s*sourceMappingURL\s*=\s*\S/u.test(
           contents.slice(commentStart, commentEnd),
         )
       ) {
@@ -439,7 +525,7 @@ function hasSourceMapAnnotation(contents: string): boolean {
         closingComment === -1 ? contents.length : closingComment;
 
       if (
-        /^[#@]\s*sourceMappingURL\s*=/u.test(
+        /^\s*[#@]\s*sourceMappingURL\s*=\s*\S/u.test(
           contents.slice(commentStart, commentEnd),
         )
       ) {
@@ -447,6 +533,15 @@ function hasSourceMapAnnotation(contents: string): boolean {
       }
 
       position = closingComment === -1 ? contents.length : closingComment + 2;
+      continue;
+    }
+
+    if (
+      scanRegularExpressions &&
+      character === '/' &&
+      isRegularExpressionStart(contents, position)
+    ) {
+      position = regularExpressionEnd(contents, position);
       continue;
     }
 
@@ -495,7 +590,7 @@ async function auditBundleFiles(
       }
     }
 
-    if (hasSourceMapAnnotation(contents)) {
+    if (hasSourceMapAnnotation(contents, javaScriptExtensions.has(extension))) {
       violations.push({ file, message: 'source map reference is present' });
     }
 

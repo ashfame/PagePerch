@@ -307,3 +307,47 @@
 - Suggested files: `AGENTS.md`, durable orchestration state, local and GitHub branch references
 - Test expectations: Markdown diff check; local worktree, upstream, remote-head, default-branch, commit-ancestry, and tag verification
 - Notes: Repository-local workflow rules were committed as `556e44c` before GitHub's native branch rename changed `feat/chrome-notes` to `trunk`. The local branch and primary checkout now track `origin/trunk`; the old task worktree is removed; generated release artifacts are retained in the primary checkout. The old checkout's two untracked files were byte-identical to their tracked `trunk` blobs, moved into the primary checkout, and their temporary migration directory was removed. The obsolete unrelated local `master` ref was explicitly deleted. No published history or tag was rewritten.
+
+## PP-027 — Register Only PagePerch Gutenberg Blocks and Formats
+
+- Status: completed
+- Priority: P0
+- Dependencies: PP-026
+- Spec or plan references: GitHub epic #1 and sub-issue #2; user-requested memory-footprint investigation
+- Acceptance criteria: Replace the complete WordPress core block and default-format registries with exact PagePerch registries for paragraph, heading, list, list item, quote, code, preformatted, separator, and the approved safe inline formats; guard exact package aliases and pinned dependency assumptions against drift; preserve structured paste, occurrence-preserving unsupported fallback, selection, keyboard undo/redo, local persistence, reload, and both editor modes; record production bundle and controlled runtime measurements; assign prospective version `0.1.9`; do not touch BYOS, AWS/S3, synchronization, authentication, or service-worker behavior.
+- Suggested files: `src/build/`, `src/side-panel/`, Vite configuration, focused build/editor tests, version metadata, performance and orchestration documentation
+- Test expectations: Exact registry and dependency-drift tests, focused editor tests, production build/audits, all seven packaged Chromium scenarios, bundle composition comparison, and controlled runtime measurement
+- Notes: Accepted after one rejected review, a corrective audit/type/browser pass, and a final independent approval. Exact package-only aliases retain subpath resolution while replacing the two full registry entries; pinned-import and production-graph audits fail closed on upstream or selected-module drift. Static unknown-to-narrow WordPress boundaries register exactly eight blocks and nine safe formats, with `core/unknown` intentionally parsing approved non-toolbar semantic tags before PagePerch's authoritative sanitizer. The complete gate passes 989 Vitest cases and all seven packaged Chromium scenarios. `side-panel.js` fell from 3,987,452 to 3,253,410 bytes, a 734,042-byte or 18.4% reduction, while CSS remained 422,187 bytes. A like-for-like non-forced-GC CDP probe measured 9.32 MiB used heap before editor mount and 12.68 MiB after, so this registry reduction improves download/evaluation graph size but does not materially reduce the mounted editor's JavaScript heap by itself.
+
+## PP-028 — Lazy-Load the Side-Panel Editor
+
+- Status: in progress
+- Priority: P0
+- Dependencies: PP-027
+- Spec or plan references: GitHub epic #1 and sub-issue #3; user-requested memory-footprint investigation
+- Acceptance criteria: Move the editor implementation and editor-only styles into an asynchronous chunk loaded only for a supported page; unsupported and pre-editor panel states do not fetch or evaluate the Gutenberg chunk; loading, errors, focus, autosave, recent notes, navigation, and local persistence remain unchanged; record production bundle and controlled runtime measurements; do not touch BYOS or service-worker behavior.
+- Suggested files: side-panel entry and composition, editor module boundary, production-build audit, focused component and packaged-browser tests, performance and orchestration documentation
+- Test expectations: Deterministic chunk-boundary audit, unsupported-page network/runtime evidence, supported editor behavior coverage, complete gate, and measurement comparison
+- Notes: Execute only after PP-027 is independently reviewed and committed so its effect remains attributable.
+
+## PP-029 — Reduce the Gutenberg Editor CSS Payload
+
+- Status: planned
+- Priority: P0
+- Dependencies: PP-028
+- Spec or plan references: GitHub epic #1 and sub-issue #4; user-requested memory-footprint investigation
+- Acceptance criteria: Replace the complete isolated-editor stylesheet with an explicit reviewed set of structural, component, format, and supported-block styles; materially reduce production CSS while preserving layout, content semantics, light/dark presentation, focus/editing, document growth, and safe paste rendering; behavioral tests remain decoupled from exact CSS declarations; record production bundle and controlled runtime measurements; do not touch BYOS or service-worker behavior.
+- Suggested files: editor style imports and local stylesheets, editor smoke audit, packaged-browser behavior coverage, performance and orchestration documentation
+- Test expectations: Production CSS composition audit, focused component tests, all seven packaged Chromium scenarios, manual visual checklist, complete gate, and measurement comparison
+- Notes: Execute only after PP-028 is independently reviewed and committed.
+
+## PP-030 — Evaluate a Direct Minimal Gutenberg Shell
+
+- Status: deferred
+- Priority: P2
+- Dependencies: PP-029 and explicit future user authorization
+- Spec or plan references: GitHub epic #1 and deferred sub-issue #5
+- Acceptance criteria: A future isolated prototype evaluates a direct `BlockEditorProvider` shell against the complete editor feature-parity checklist, maintenance risk, bundle size, and runtime memory before any production replacement is considered.
+- Suggested files: Future prototype and decision documentation only
+- Test expectations: Not applicable to the current effort; no implementation attempt is authorized
+- Notes: Explicitly excluded from the current work. Do not change the editor shell, BYOS integration, AWS/S3 code, synchronization, authentication, or service-worker architecture under this task.

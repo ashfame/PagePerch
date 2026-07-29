@@ -4,9 +4,17 @@ import { resolve } from 'node:path';
 
 import { build } from 'vite';
 
-import { GUTENBERG_SINGLETON_PACKAGES } from '../src/build/gutenbergCompatibility.ts';
+import {
+  GUTENBERG_SINGLETON_PACKAGES,
+  PAGEPERCH_GUTENBERG_PACKAGE_ALIASES,
+  pagePerchGutenbergCompatibilityPlugin,
+} from '../src/build/gutenbergCompatibility.ts';
 import { mv3CompatibilityPlugin } from '../src/build/mv3Compatibility.ts';
 import { auditBundle } from '../src/build/packageAudit.ts';
+import {
+  PAGEPERCH_CORE_BLOCK_NAMES,
+  PAGEPERCH_RICH_TEXT_FORMAT_NAMES,
+} from '../src/build/pagePerchGutenbergRegistry.ts';
 
 const projectRoot = resolve(import.meta.dirname, '..');
 const outputDirectory = await mkdtemp(
@@ -101,9 +109,13 @@ try {
       },
       logLevel: 'warn',
       mode: 'production',
-      plugins: [mv3CompatibilityPlugin()],
+      plugins: [
+        pagePerchGutenbergCompatibilityPlugin(),
+        mv3CompatibilityPlugin(),
+      ],
       publicDir: false,
       resolve: {
+        alias: [...PAGEPERCH_GUTENBERG_PACKAGE_ALIASES],
         dedupe: [...GUTENBERG_SINGLETON_PACKAGES],
       },
       root: projectRoot,
@@ -124,6 +136,71 @@ try {
   if (!includesEditorModule) {
     throw new Error(
       'Editor smoke bundle did not include the isolated editor module entry.',
+    );
+  }
+
+  const modulePaths = chunks.flatMap((chunk) => Object.keys(chunk.modules));
+  const normalizedModulePaths = modulePaths.map((modulePath) =>
+    modulePath.replaceAll('\\', '/').replace(/\?.*$/u, ''),
+  );
+  const includesBlockShim = normalizedModulePaths.some((modulePath) =>
+    modulePath.endsWith('/src/build/pagePerchGutenbergBlockLibrary.ts'),
+  );
+  const includesFormatShim = normalizedModulePaths.some((modulePath) =>
+    modulePath.endsWith('/src/build/pagePerchGutenbergFormatLibrary.ts'),
+  );
+  if (!includesBlockShim || !includesFormatShim) {
+    throw new Error(
+      'Editor smoke bundle did not include both PagePerch Gutenberg registry shims.',
+    );
+  }
+
+  const fullRegistryEntries = [
+    '/node_modules/@wordpress/block-library/build-module/index.js',
+    '/node_modules/@wordpress/format-library/build-module/index.js',
+  ];
+  for (const registryEntry of fullRegistryEntries) {
+    if (
+      normalizedModulePaths.some((modulePath) =>
+        modulePath.endsWith(registryEntry),
+      )
+    ) {
+      throw new Error(
+        `Editor smoke bundle unexpectedly included the full registry entry: ${registryEntry}`,
+      );
+    }
+  }
+
+  const includedBlockEntries = normalizedModulePaths.flatMap((modulePath) => {
+    const match =
+      /\/node_modules\/@wordpress\/block-library\/build-module\/([^/]+)\/index\.js$/u.exec(
+        modulePath,
+      );
+    return match?.[1] === undefined ? [] : [`core/${match[1]}`];
+  });
+  const includedFormatEntries = normalizedModulePaths.flatMap((modulePath) => {
+    const match =
+      /\/node_modules\/@wordpress\/format-library\/build-module\/([^/]+)\/index\.js$/u.exec(
+        modulePath,
+      );
+    return match?.[1] === undefined ? [] : [`core/${match[1]}`];
+  });
+  const exactSet = (values: readonly string[]): string[] =>
+    [...new Set(values)].sort();
+  if (
+    JSON.stringify(exactSet(includedBlockEntries)) !==
+    JSON.stringify(exactSet(PAGEPERCH_CORE_BLOCK_NAMES))
+  ) {
+    throw new Error(
+      `Editor smoke block registry graph drifted: ${exactSet(includedBlockEntries).join(', ')}.`,
+    );
+  }
+  if (
+    JSON.stringify(exactSet(includedFormatEntries)) !==
+    JSON.stringify(exactSet(PAGEPERCH_RICH_TEXT_FORMAT_NAMES))
+  ) {
+    throw new Error(
+      `Editor smoke format registry graph drifted: ${exactSet(includedFormatEntries).join(', ')}.`,
     );
   }
 
