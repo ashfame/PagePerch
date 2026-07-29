@@ -21,6 +21,49 @@ const outputDirectory = await mkdtemp(
   resolve(tmpdir(), 'pageperch-editor-smoke-'),
 );
 const keepOutput = process.env.PAGEPERCH_KEEP_EDITOR_SMOKE === '1';
+const editorStylesheetPath = resolve(
+  projectRoot,
+  'src/side-panel/PageNoteEditorCore.css',
+);
+const expectedEditorStylesheetImports = [
+  '@wordpress/components/build-style/style.css',
+  '@wordpress/block-editor/build-style/style.css',
+  '@wordpress/format-library/build-style/style.css',
+  '@wordpress/edit-post/build-style/style.css',
+  '@wordpress/block-library/build-style/common.css',
+  '@wordpress/block-library/build-style/editor-elements.css',
+  '@wordpress/block-library/build-style/paragraph/style.css',
+  '@wordpress/block-library/build-style/paragraph/editor.css',
+  '@wordpress/block-library/build-style/heading/style.css',
+  '@wordpress/block-library/build-style/list/style.css',
+  '@wordpress/block-library/build-style/quote/style.css',
+  '@wordpress/block-library/build-style/quote/theme.css',
+  '@wordpress/block-library/build-style/code/style.css',
+  '@wordpress/block-library/build-style/code/editor.css',
+  '@wordpress/block-library/build-style/code/theme.css',
+  '@wordpress/block-library/build-style/preformatted/style.css',
+  '@wordpress/block-library/build-style/separator/style.css',
+  '@wordpress/block-library/build-style/separator/editor.css',
+  '@wordpress/block-library/build-style/separator/theme.css',
+] as const;
+const maximumEditorSmokeStylesheetBytes = 256 * 1024;
+const requiredEditorStylesheetMarkers = [
+  '.components-button',
+  '.block-editor-block-list__layout',
+  '.format-library__inline-color-popover',
+  '.edit-post-visual-editor',
+  '.wp-block-code',
+  '.wp-block-list',
+  '.wp-block-preformatted',
+  '.wp-block-quote',
+  '.wp-block-separator',
+] as const;
+const unsupportedBlockStylesheetMarkers = [
+  '.wp-block-cover',
+  '.wp-block-gallery',
+  '.wp-block-image',
+  '.wp-block-table',
+] as const;
 
 interface EditorBuildChunk {
   modules: Record<string, unknown>;
@@ -77,6 +120,22 @@ function parseBuildOutput(value: unknown): EditorBuildOutput {
 }
 
 try {
+  const editorStylesheetSource = await readFile(editorStylesheetPath, 'utf8');
+  const actualEditorStylesheetImports = [
+    ...editorStylesheetSource.matchAll(
+      /^@import\s+['"](?<path>[^'"]+)['"];\s*$/gmu,
+    ),
+  ].map((match) => match.groups?.path);
+  if (
+    actualEditorStylesheetImports.some((path) => path === undefined) ||
+    JSON.stringify(actualEditorStylesheetImports) !==
+      JSON.stringify(expectedEditorStylesheetImports)
+  ) {
+    throw new Error(
+      `PagePerch editor stylesheet imports drifted: ${actualEditorStylesheetImports.join(', ')}.`,
+    );
+  }
+
   const buildOutput = parseBuildOutput(
     await build({
       build: {
@@ -218,10 +277,26 @@ try {
     resolve(outputDirectory, 'assets/editor-smoke.css'),
     'utf8',
   );
-  if (editorStyles.length < 100_000) {
+  if (
+    Buffer.byteLength(editorStyles, 'utf8') > maximumEditorSmokeStylesheetBytes
+  ) {
     throw new Error(
-      'Editor smoke stylesheet is unexpectedly small; Gutenberg CSS may not have been emitted.',
+      `Editor smoke stylesheet exceeds its ${String(maximumEditorSmokeStylesheetBytes)}-byte budget.`,
     );
+  }
+  for (const marker of requiredEditorStylesheetMarkers) {
+    if (!editorStyles.includes(marker)) {
+      throw new Error(
+        `Editor smoke stylesheet is missing a required composition marker: ${marker}.`,
+      );
+    }
+  }
+  for (const marker of unsupportedBlockStylesheetMarkers) {
+    if (editorStyles.includes(marker)) {
+      throw new Error(
+        `Editor smoke stylesheet contains an unsupported block marker: ${marker}.`,
+      );
+    }
   }
 
   const result = await auditBundle(outputDirectory);

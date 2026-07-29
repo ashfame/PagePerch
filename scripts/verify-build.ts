@@ -14,10 +14,22 @@ const lazyEditorEntries = [
   'assets/PageNoteEditor.js',
 ] as const;
 const maximumSidePanelEntryBytes = 96 * 1024;
+const maximumEditorStylesheetBytes = 272 * 1024;
 const editorImplementationMarkers = [
   'BlockEditorProvider',
   'Page note editor',
   'core/paragraph',
+] as const;
+const editorStylesheetMarkers = [
+  '.components-button',
+  '.block-editor-block-list__layout',
+  '.format-library__inline-color-popover',
+  '.edit-post-visual-editor',
+  '.wp-block-code',
+  '.wp-block-list',
+  '.wp-block-preformatted',
+  '.wp-block-quote',
+  '.wp-block-separator',
 ] as const;
 
 await Promise.all(
@@ -31,21 +43,40 @@ await Promise.all(
   ),
 );
 
-const [sidePanelHtml, sidePanelSource, editorSource, sidePanelMetadata] =
-  await Promise.all([
-    readFile(resolve(distributionDirectory, 'side-panel.html'), 'utf8'),
-    readFile(resolve(distributionDirectory, 'assets/side-panel.js'), 'utf8'),
-    readFile(
-      resolve(distributionDirectory, 'assets/PageNoteEditor.js'),
-      'utf8',
-    ),
-    stat(resolve(distributionDirectory, 'assets/side-panel.js')),
-  ]);
+const [
+  sidePanelHtml,
+  sidePanelSource,
+  editorSource,
+  editorStyles,
+  sidePanelMetadata,
+  editorStylesMetadata,
+] = await Promise.all([
+  readFile(resolve(distributionDirectory, 'side-panel.html'), 'utf8'),
+  readFile(resolve(distributionDirectory, 'assets/side-panel.js'), 'utf8'),
+  readFile(resolve(distributionDirectory, 'assets/PageNoteEditor.js'), 'utf8'),
+  readFile(resolve(distributionDirectory, 'assets/PageNoteEditor.css'), 'utf8'),
+  stat(resolve(distributionDirectory, 'assets/side-panel.js')),
+  stat(resolve(distributionDirectory, 'assets/PageNoteEditor.css')),
+]);
 
 if (sidePanelMetadata.size > maximumSidePanelEntryBytes) {
   throw new Error(
     `The side-panel shell entry exceeds its ${String(maximumSidePanelEntryBytes)}-byte budget: ${String(sidePanelMetadata.size)} bytes.`,
   );
+}
+
+if (editorStylesMetadata.size > maximumEditorStylesheetBytes) {
+  throw new Error(
+    `The lazy editor stylesheet exceeds its ${String(maximumEditorStylesheetBytes)}-byte budget: ${String(editorStylesMetadata.size)} bytes.`,
+  );
+}
+
+for (const marker of editorStylesheetMarkers) {
+  if (!editorStyles.includes(marker)) {
+    throw new Error(
+      `The lazy editor stylesheet is missing a required composition marker: ${marker}.`,
+    );
+  }
 }
 
 if (

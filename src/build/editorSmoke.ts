@@ -1,6 +1,6 @@
 import IsolatedBlockEditor, {
   initializeEditor,
 } from '@automattic/isolated-block-editor';
-import '@automattic/isolated-block-editor/build-browser/core.css';
+import '../side-panel/PageNoteEditorCore.css';
 
 export { initializeEditor, IsolatedBlockEditor };

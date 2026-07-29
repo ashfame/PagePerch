@@ -10,7 +10,6 @@ import {
 import IsolatedBlockEditor, {
   EditorLoaded,
 } from '@automattic/isolated-block-editor';
-import '@automattic/isolated-block-editor/build-browser/core.css';
 import apiFetch from '@wordpress/api-fetch';
 import { parse as parseSerializedBlocks } from '@wordpress/block-serialization-default-parser';
 // @ts-expect-error WordPress ships declarations without exposing them in its package metadata.
@@ -21,6 +20,7 @@ import { useRegistry } from '@wordpress/data';
 import { RichTextData } from '@wordpress/rich-text';
 
 import type { EditorMode } from '../domain/settings';
+import './PageNoteEditorCore.css';
 import './PageNoteEditor.css';
 import {
   PAGE_NOTE_EDITOR_STYLES,

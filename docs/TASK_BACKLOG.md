@@ -332,14 +332,14 @@
 
 ## PP-029 — Reduce the Gutenberg Editor CSS Payload
 
-- Status: in progress
+- Status: completed
 - Priority: P0
 - Dependencies: PP-028
 - Spec or plan references: GitHub epic #1 and sub-issue #4; user-requested memory-footprint investigation
 - Acceptance criteria: Replace the complete isolated-editor stylesheet with an explicit reviewed set of structural, component, format, and supported-block styles; materially reduce production CSS while preserving layout, content semantics, light/dark presentation, focus/editing, document growth, and safe paste rendering; behavioral tests remain decoupled from exact CSS declarations; record production bundle and controlled runtime measurements; do not touch BYOS or service-worker behavior.
 - Suggested files: editor style imports and local stylesheets, editor smoke audit, packaged-browser behavior coverage, performance and orchestration documentation
 - Test expectations: Production CSS composition audit, focused component tests, all eight packaged Chromium scenarios, manual visual checklist, complete gate, and measurement comparison
-- Notes: Execute against the independently approved and locally committed PP-028 state. Preserve the explicit behavioral test boundary: build audits may verify composition, size budgets, and required structural markers, while browser tests verify real editing and layout behavior rather than exact declarations.
+- Notes: Independently accepted without findings. The monolithic 422,187-byte `core.css` output is replaced by an exact ordered import surface for Gutenberg components, block-editor structure, format-library controls, edit-post structure, common editor elements, and every available paragraph, heading, list/list-item, quote, code, preformatted, and separator style family. Production and smoke audits enforce exact imports, required composition markers, representative unsupported-block exclusions, and 272-KiB/256-KiB size ceilings without asserting declaration values or computed appearance. The production editor stylesheet is 246,609 bytes, saving 175,578 bytes or 41.6%, while editor JavaScript and its lazy boundary remain unchanged. All eight packaged Chromium scenarios pass, including multi-spot focus/type/persist/reload, supported structured paste and nested lists, dark mode, 16-pixel insets, growth, lazy loading, navigation/restart, and recent notes. A controlled CDP probe measured 2.63 MiB used heap while unsupported and 12.90 MiB after editor mount, effectively unchanged from PP-028 as expected for CSS-only work.
 
 ## PP-030 — Evaluate a Direct Minimal Gutenberg Shell
 
