@@ -14,7 +14,7 @@ import { DefaultNoteService } from '../services/note';
 import { DefaultPageIdentityService } from '../services/pageIdentity';
 import { DefaultPageSyncVisibility } from '../sync/syncVisibility';
 import { SidePanelApp, type CreateActivePageSessionController } from './App';
-import { PageNoteEditor } from './PageNoteEditor';
+import { LazyPageNoteEditor } from './LazyPageNoteEditor';
 import { ActivePageSessionController } from './activePageSession';
 import { ChromeActivePageTabs } from './chromeActivePageTabs';
 import { ChromeCanonicalPageOpener } from './chromeCanonicalPageOpener';
@@ -104,7 +104,7 @@ createRoot(rootElement).render(
     <SidePanelApp
       createController={createController}
       draftOwnership={draftOwnership}
-      Editor={PageNoteEditor}
+      Editor={LazyPageNoteEditor}
       openSettings={() => chrome.runtime.openOptionsPage()}
       pageOpener={pageOpener}
       pageSyncVisibility={pageSyncVisibility}

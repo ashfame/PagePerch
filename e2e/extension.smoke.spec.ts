@@ -610,6 +610,59 @@ test('loads the unpacked module worker and both branded React surfaces', async (
   }
 });
 
+test('loads the editor resources only after the panel reaches a supported draft', async () => {
+  const session = await launchExtension();
+  const fixtureUrl = 'https://pageperch.test/lazy-editor-fixture';
+  const requestedEditorResources = new Set<string>();
+
+  try {
+    await routeFixture(session.context, fixtureUrl, 'Lazy editor fixture');
+    session.page.on('request', (request) => {
+      const url = new URL(request.url());
+
+      if (
+        url.protocol === 'chrome-extension:' &&
+        (url.pathname === '/assets/PageNoteEditor.js' ||
+          url.pathname === '/assets/PageNoteEditor.css')
+      ) {
+        requestedEditorResources.add(url.pathname);
+      }
+    });
+
+    await session.page.goto(
+      `chrome-extension://${session.extensionId}/side-panel.html`,
+    );
+    await expect(
+      session.page.getByRole('heading', {
+        level: 2,
+        name: "Notes aren't available here",
+      }),
+    ).toBeVisible();
+    expect([...requestedEditorResources]).toEqual([]);
+
+    const fixturePage = await session.context.newPage();
+    await fixturePage.goto(fixtureUrl);
+    await activateTabForUrl(session.serviceWorker, fixtureUrl);
+
+    const editable = await expectSimplifiedEditorReady(
+      session.page,
+      fixtureUrl,
+      'Lazy editor fixture',
+    );
+    await expect
+      .poll(() => [...requestedEditorResources].sort())
+      .toEqual(['/assets/PageNoteEditor.css', '/assets/PageNoteEditor.js']);
+
+    await editable.click({ position: { x: 8, y: 8 } });
+    await session.page.keyboard.type('Lazy editor loaded');
+    await expect(
+      session.page.getByText('Lazy editor loaded', { exact: true }),
+    ).toBeVisible();
+  } finally {
+    await closeExtension(session);
+  }
+});
+
 test('opens the packaged editor for a supported HTTP tab without fatal runtime errors', async () => {
   const session = await launchExtension();
   const fixtureUrl = 'https://pageperch.test/editor-fixture';

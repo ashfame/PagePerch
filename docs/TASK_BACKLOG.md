@@ -321,25 +321,25 @@
 
 ## PP-028 — Lazy-Load the Side-Panel Editor
 
-- Status: in progress
+- Status: completed
 - Priority: P0
 - Dependencies: PP-027
 - Spec or plan references: GitHub epic #1 and sub-issue #3; user-requested memory-footprint investigation
 - Acceptance criteria: Move the editor implementation and editor-only styles into an asynchronous chunk loaded only for a supported page; unsupported and pre-editor panel states do not fetch or evaluate the Gutenberg chunk; loading, errors, focus, autosave, recent notes, navigation, and local persistence remain unchanged; record production bundle and controlled runtime measurements; do not touch BYOS or service-worker behavior.
 - Suggested files: side-panel entry and composition, editor module boundary, production-build audit, focused component and packaged-browser tests, performance and orchestration documentation
 - Test expectations: Deterministic chunk-boundary audit, unsupported-page network/runtime evidence, supported editor behavior coverage, complete gate, and measurement comparison
-- Notes: Execute only after PP-027 is independently reviewed and committed so its effect remains attributable.
+- Notes: Accepted after one reviewer found a duplicate loading-state callback and a corrective worker removed it before final independent approval. The production entry now loads a 42,683-byte shell and fetches the 3,211,143-byte editor JavaScript plus 422,187-byte editor CSS only after a supported page reaches editor composition. A focused module-boundary test proves the editor is not evaluated before the wrapper mounts; the fail-closed build audit proves the shell contains stable lazy references without editor markers or eager HTML preload; packaged request interception proves an unsupported panel fetches neither editor resource before navigation to a supported fixture fetches both and supports typing. The exact-state gate passes 990 Vitest cases and all eight Chromium scenarios. A controlled non-forced-GC CDP probe measured 2.67 MiB used heap on the unsupported panel and 12.92 MiB after editor mount, so unsupported-panel used heap is 6.65 MiB or approximately 71% below PP-027 while supported-editor heap remains effectively unchanged.
 
 ## PP-029 — Reduce the Gutenberg Editor CSS Payload
 
-- Status: planned
+- Status: in progress
 - Priority: P0
 - Dependencies: PP-028
 - Spec or plan references: GitHub epic #1 and sub-issue #4; user-requested memory-footprint investigation
 - Acceptance criteria: Replace the complete isolated-editor stylesheet with an explicit reviewed set of structural, component, format, and supported-block styles; materially reduce production CSS while preserving layout, content semantics, light/dark presentation, focus/editing, document growth, and safe paste rendering; behavioral tests remain decoupled from exact CSS declarations; record production bundle and controlled runtime measurements; do not touch BYOS or service-worker behavior.
 - Suggested files: editor style imports and local stylesheets, editor smoke audit, packaged-browser behavior coverage, performance and orchestration documentation
-- Test expectations: Production CSS composition audit, focused component tests, all seven packaged Chromium scenarios, manual visual checklist, complete gate, and measurement comparison
-- Notes: Execute only after PP-028 is independently reviewed and committed.
+- Test expectations: Production CSS composition audit, focused component tests, all eight packaged Chromium scenarios, manual visual checklist, complete gate, and measurement comparison
+- Notes: Execute against the independently approved and locally committed PP-028 state. Preserve the explicit behavioral test boundary: build audits may verify composition, size budgets, and required structural markers, while browser tests verify real editing and layout behavior rather than exact declarations.
 
 ## PP-030 — Evaluate a Direct Minimal Gutenberg Shell
 
