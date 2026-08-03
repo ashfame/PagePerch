@@ -290,6 +290,36 @@ describe('DefaultRootRecentNotesIndex loading', () => {
     ).toEqual([directChild.pageKey, deepChild.pageKey]);
   });
 
+  it('lists a lowercase GitHub repository note under its mixed-case organization page', async () => {
+    const harness = createHarness();
+    const current = {
+      ...nonRootSession('https://github.com/automattic'),
+      representativeUrl: 'https://github.com/Automattic',
+    };
+    const repository = note('A'.repeat(43), {
+      canonicalUrl: 'https://github.com/automattic/chatrix',
+      origin: 'https://github.com',
+      representativeUrl: 'https://github.com/automattic/chatrix',
+      title: 'Chatrix note',
+    });
+    const differentlyCasedCurrentPage = note('B'.repeat(43), {
+      canonicalUrl: 'https://github.com/Automattic',
+      origin: 'https://github.com',
+      representativeUrl: 'https://github.com/Automattic',
+    });
+    harness.listRecentByOrigin.mockResolvedValueOnce([
+      differentlyCasedCurrentPage,
+      repository,
+    ]);
+
+    harness.connection.setSession(current);
+    await settle();
+
+    expect(
+      latestReady(harness.states).entries.map((entry) => entry.pageKey),
+    ).toEqual([repository.pageKey]);
+  });
+
   it('does not query or subscribe without a supported session', async () => {
     const harness = createHarness();
 

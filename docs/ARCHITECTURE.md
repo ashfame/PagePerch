@@ -18,7 +18,7 @@ The BYOS boundary is extension-side client composition only. A public-client coo
 
 ## Data Flow
 
-An active supported URL is canonicalized by removing the fragment, retaining the normalized exact origin and pathname, filtering global and exact-origin exclusions case-insensitively, and sorting remaining query keys and values deterministically. SHA-256/base64url of the canonical URL becomes `pageKey`; the unhashed canonical URL remains in each record.
+An active supported URL is canonicalized by removing the fragment, retaining the normalized exact origin and pathname, filtering global and exact-origin exclusions case-insensitively, and sorting remaining query keys and values deterministically. Paths remain case-sensitive unless the normalized exact origin appears in PageIdentityService's immutable built-in case-insensitive list; `https://github.com` is the initial listed origin, and the recent-note hierarchy applies the same normalization to stored records so older casing variants retain correct parent/descendant placement. SHA-256/base64url of the canonical URL becomes `pageKey`; the unhashed canonical URL remains in each record.
 
 An edit is debounced for 750 ms. `NoteService` normalizes and hashes serialized Gutenberg HTML, ignores initialization and unchanged saves, writes the local record first, and queues the latest page revision when BYOS is connected. Clearing existing content writes an indefinite tombstone; clearing an untouched editor writes nothing.
 

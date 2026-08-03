@@ -1,4 +1,5 @@
 import type { NoteRecordV1, NoteService } from '../domain/note';
+import { normalizePageIdentityPathname } from '../services/pageIdentity';
 import type { SupportedActivePageSessionState } from './activePageSession';
 
 type RecentNoteService = Pick<NoteService, 'listRecentByOrigin'>;
@@ -110,6 +111,11 @@ function immutableEntries(
   records: readonly NoteRecordV1[],
   context: RecentNotesContext,
 ): readonly RootRecentNoteEntry[] {
+  const contextPathname = normalizePageIdentityPathname(
+    context.origin,
+    context.pathname,
+  );
+
   return Object.freeze(
     records
       .filter((record) => {
@@ -141,15 +147,20 @@ function immutableEntries(
           return true;
         }
 
-        if (canonicalUrl.pathname === context.pathname) {
+        const candidatePathname = normalizePageIdentityPathname(
+          context.origin,
+          canonicalUrl.pathname,
+        );
+
+        if (candidatePathname === contextPathname) {
           return false;
         }
 
-        const descendantPrefix = context.pathname.endsWith('/')
-          ? context.pathname
-          : `${context.pathname}/`;
+        const descendantPrefix = contextPathname.endsWith('/')
+          ? contextPathname
+          : `${contextPathname}/`;
 
-        return canonicalUrl.pathname.startsWith(descendantPrefix);
+        return candidatePathname.startsWith(descendantPrefix);
       })
       .map((record) =>
         Object.freeze({

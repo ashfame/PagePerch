@@ -132,7 +132,7 @@ The worker is not a server and does not implement BYOS. BYOS remains the establi
 
 ## Page identity
 
-Page identity uses the normalized HTTP or HTTPS origin, path, and meaningful query parameters. Schemes, subdomains, non-default ports, trailing slashes, and meaningful query values stay distinct. Fragments are ignored, query keys and values are sorted deterministically, and default ports are normalized by the URL parser.
+Page identity uses the normalized HTTP or HTTPS origin, path, and meaningful query parameters. Schemes, subdomains, non-default ports, trailing slashes, and meaningful query values stay distinct. Paths remain case-sensitive except on a built-in exact-origin list whose routes are known to be case-insensitive; that list currently contains `https://github.com`, so paths such as `/Automattic` and `/automattic` share one identity while query names and values retain their casing. Fragments are ignored, query keys and values are sorted deterministically, and default ports are normalized by the URL parser.
 
 Built-in exclusions cover `utm_*` and common advertising or analytics parameters such as `gclid`, `fbclid`, `msclkid`, `_ga`, and `_gl`. Settings calls these **Page identity exclusions**: query parameters that do not make a page unique.
 
@@ -231,12 +231,12 @@ npm run release:package
 
 `npm run release:package` rebuilds and audits `dist/`, captures one immutable audited snapshot, and creates `.release/pageperch-<version>.zip` plus `.release/pageperch-<version>.zip.sha256`. Archive paths and metadata are deterministic, repeated packaging of identical sources produces identical bytes, and the archive contains the extension files at its root. The command rejects concurrent runs, source/output aliases, symlinks, unsafe paths, source maps, credential-like material, manifest/package version drift, and unaudited mutations. Publication is rollback-safe; if automatic recovery cannot complete, the error reports a retained recovery directory and lock instead of deleting the only prior good artifact.
 
-For prospective version `0.1.9`, verify and inspect the artifact on a system with `sha256sum` and `unzip`:
+For prospective version `0.1.10`, verify and inspect the artifact on a system with `sha256sum` and `unzip`:
 
 ```sh
 cd .release
-sha256sum -c pageperch-0.1.9.zip.sha256
-unzip -t pageperch-0.1.9.zip
+sha256sum -c pageperch-0.1.10.zip.sha256
+unzip -t pageperch-0.1.10.zip
 ```
 
 Inspect the generated `dist/` directory, verify the intended public `VITE_BYOS_CLIENT_ID` configuration, and load that exact build for the manual checklist. To test the ZIP instead, extract it into a stable directory and select that directory with Chrome's **Load unpacked** control. Never package `.env` files, browser profiles, test artifacts, coverage, source maps, private keys, OAuth tokens, or S3 credentials.

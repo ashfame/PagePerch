@@ -5,6 +5,7 @@ import type {
   PageIdentityExclusionRule,
 } from '../domain/pageIdentity';
 import {
+  BUILT_IN_CASE_INSENSITIVE_PATH_ORIGINS,
   BUILT_IN_PAGE_IDENTITY_EXCLUSIONS,
   DefaultPageIdentityService,
 } from './pageIdentity';
@@ -203,6 +204,61 @@ describe('DefaultPageIdentityService', () => {
       );
 
       expect(new Set(identities.map(({ pageKey }) => pageKey)).size).toBe(4);
+    });
+
+    it('shares one GitHub identity across path casing variants', async () => {
+      const lowercase = await expectSupported(
+        'https://github.com/automattic/chatrix',
+      );
+      const mixedCase = await expectSupported(
+        'https://github.com/Automattic/Chatrix',
+      );
+
+      expect(mixedCase).toEqual(lowercase);
+      expect(mixedCase).toMatchObject({
+        canonicalUrl: 'https://github.com/automattic/chatrix',
+        origin: 'https://github.com',
+        pathname: '/automattic/chatrix',
+      });
+    });
+
+    it('publishes an immutable exact-origin list for case-insensitive paths', () => {
+      expect(BUILT_IN_CASE_INSENSITIVE_PATH_ORIGINS).toEqual([
+        'https://github.com',
+      ]);
+      expect(Object.isFrozen(BUILT_IN_CASE_INSENSITIVE_PATH_ORIGINS)).toBe(
+        true,
+      );
+    });
+
+    it.each([
+      ['http://github.com/Automattic', 'http://github.com/Automattic'],
+      [
+        'https://www.github.com/Automattic',
+        'https://www.github.com/Automattic',
+      ],
+      [
+        'https://github.com:8443/Automattic',
+        'https://github.com:8443/Automattic',
+      ],
+      ['https://example.com/Automattic', 'https://example.com/Automattic'],
+    ])(
+      'keeps paths case-sensitive outside the built-in exact origin for %s',
+      async (rawUrl, expected) => {
+        const identity = await expectSupported(rawUrl);
+
+        expect(identity.canonicalUrl).toBe(expected);
+      },
+    );
+
+    it('keeps GitHub query names and values case-sensitive while normalizing its path', async () => {
+      const identity = await expectSupported(
+        'https://github.com/Automattic?view=Upper&View=lower',
+      );
+
+      expect(identity.canonicalUrl).toBe(
+        'https://github.com/automattic?View=lower&view=Upper',
+      );
     });
   });
 

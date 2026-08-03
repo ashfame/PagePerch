@@ -351,3 +351,14 @@
 - Suggested files: Future prototype and decision documentation only
 - Test expectations: Not applicable to the current effort; no implementation attempt is authorized
 - Notes: Explicitly excluded from the current work. Do not change the editor shell, BYOS integration, AWS/S3 code, synchronization, authentication, or service-worker architecture under this task.
+
+## PP-031 — Add Exact-Origin Case-Insensitive Paths
+
+- Status: completed; awaiting manual candidate approval
+- Priority: P0
+- Dependencies: published `v0.1.9`
+- Spec or plan references: User report that a note saved on `https://github.com/automattic/chatrix` is absent beneath `https://github.com/Automattic`; canonical page identity; hierarchical recent notes
+- Acceptance criteria: An immutable built-in exact-origin list controls path case normalization and initially contains only `https://github.com`; mixed-case GitHub paths share canonical URLs and page keys; query names and values, HTTP, subdomains, non-default ports, and every unlisted origin retain prior semantics; recent-note descendant matching uses the same path policy and excludes a differently cased record for the current page while including the saved Chatrix child note; prospective version is `0.1.10`; complete gate and deterministic release packaging pass; no tag or push occurs before explicit approval.
+- Suggested files: `src/services/pageIdentity.ts`, `src/side-panel/rootRecentNotes.ts`, focused tests, version metadata, user documentation, and durable project state
+- Test expectations: Focused identity equivalence/exact-scope/query-case tests; focused GitHub current-page and descendant-note test; complete `npm run check`; repeated deterministic `npm run release:package`; strict checksum/ZIP/version verification
+- Notes: The implementation lowercases canonical pathnames only for the exact normalized origin `https://github.com`, centralizes the policy in PageIdentityService, and reuses the same normalizer in the recent-note hierarchy so pre-existing stored casing variants are classified consistently. The complete gate passes 45 files and 998 Vitest cases at 90.76% statement and 87.19% branch coverage, production build/package/editor audits, and all eight packaged Chromium scenarios.

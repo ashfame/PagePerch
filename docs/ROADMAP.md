@@ -128,6 +128,12 @@ Rename the repository's sole default branch to `trunk` without rewriting history
 
 ## M21 — Gutenberg Memory-Footprint Reduction
 
-Status: in progress.
+Status: completed and published as `v0.1.9`.
 
-Reduce the side-panel editor's resource footprint in three independently measured and committed steps: register only PagePerch's supported blocks and formats, lazy-load the supported-page editor, and replace the complete isolated-editor stylesheet with an explicit minimal surface. Preserve editor behavior throughout, keep a direct `BlockEditorProvider` replacement deferred, and make no BYOS, synchronization, authentication, AWS/S3, or service-worker changes. Package the prospective `0.1.9` candidate locally for manual approval before any tag or push.
+Reduce the side-panel editor's resource footprint in three independently measured and committed steps: register only PagePerch's supported blocks and formats, lazy-load the supported-page editor, and replace the complete isolated-editor stylesheet with an explicit minimal surface. Preserve editor behavior throughout, keep a direct `BlockEditorProvider` replacement deferred, and make no BYOS, synchronization, authentication, AWS/S3, or service-worker changes.
+
+## M22 — Exact-Origin Path Case Policy
+
+Status: implementation complete and awaiting manual approval.
+
+Add an immutable built-in list of exact origins whose paths are treated case-insensitively, initially containing `https://github.com`, while retaining case-sensitive paths everywhere else and preserving query-name/value casing. Apply the same policy to hierarchical recent-note matching so a note saved on `/automattic/chatrix` appears under the mixed-case `/Automattic` organization route, bind the candidate to prospective version `0.1.10`, and do not tag or push before explicit approval.

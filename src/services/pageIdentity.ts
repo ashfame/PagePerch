@@ -23,6 +23,14 @@ const exactParameterNames = Object.freeze([
 
 const parameterNamePrefixes = Object.freeze(['utm_']);
 
+export const BUILT_IN_CASE_INSENSITIVE_PATH_ORIGINS = Object.freeze([
+  'https://github.com',
+]);
+
+const caseInsensitivePathOriginSet = new Set(
+  BUILT_IN_CASE_INSENSITIVE_PATH_ORIGINS,
+);
+
 export const BUILT_IN_PAGE_IDENTITY_EXCLUSIONS: BuiltInPageIdentityExclusions =
   Object.freeze({
     exactParameterNames,
@@ -45,6 +53,18 @@ function compareCodeUnits(left: string, right: string): number {
 
 function isSupportedProtocol(protocol: string): boolean {
   return protocol === 'http:' || protocol === 'https:';
+}
+
+export function normalizePageIdentityPathname(
+  origin: string,
+  pathname: string,
+): string {
+  if (!caseInsensitivePathOriginSet.has(origin)) {
+    return pathname;
+  }
+
+  // Product decision: selected sites whose routes are case-insensitive share one note across path casing variants.
+  return pathname.toLowerCase();
 }
 
 function normalizeRuleOrigin(origin: string): string | undefined {
@@ -191,7 +211,11 @@ export async function derivePageIdentity(
     parsedUrl,
     getCustomExclusionsForOrigin(parsedUrl.origin, customExclusions),
   );
-  const canonicalUrl = `${parsedUrl.origin}${parsedUrl.pathname}${
+  const pathname = normalizePageIdentityPathname(
+    parsedUrl.origin,
+    parsedUrl.pathname,
+  );
+  const canonicalUrl = `${parsedUrl.origin}${pathname}${
     meaningfulQuery === '' ? '' : `?${meaningfulQuery}`
   }`;
 
@@ -199,10 +223,10 @@ export async function derivePageIdentity(
     status: 'supported',
     identity: {
       canonicalUrl,
-      isRoot: parsedUrl.pathname === '/' && meaningfulQuery === '',
+      isRoot: pathname === '/' && meaningfulQuery === '',
       origin: parsedUrl.origin,
       pageKey: await createPageIdentityKey(canonicalUrl),
-      pathname: parsedUrl.pathname,
+      pathname,
     },
   };
 }

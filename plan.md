@@ -29,7 +29,7 @@
   ### Canonical page identity
 
   - Support only http: and https: pages; show a clear unsupported-page state for Chrome internals, extension pages, local files, blank tabs, and other schemes.
-  - Define identity from the exact normalized origin, pathname, and meaningful query parameters. HTTP and HTTPS, subdomains, and non-default ports remain distinct.
+  - Define identity from the exact normalized origin, pathname, and meaningful query parameters. HTTP and HTTPS, subdomains, and non-default ports remain distinct. Paths remain case-sensitive except for a built-in exact-origin list whose paths are canonicalized case-insensitively; the default list contains `https://github.com`.
   - Ignore URL fragments, remove default ports through the platform URL parser, preserve meaningful trailing slashes, preserve duplicate query values, and sort remaining query keys and values deterministically.
   - Hash the canonical URL with SHA-256/base64url to obtain a stable storage key while retaining the canonical URL in the record for display, navigation, and future migrations.
   - Treat a page as an origin root only when the canonical pathname is / and no meaningful query parameters remain. A root URL containing only ignored parameters still counts as the root.
